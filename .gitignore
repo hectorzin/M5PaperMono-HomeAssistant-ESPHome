@@ -1,0 +1,9 @@
+secrets.yaml
+.esphome/
+.pioenvs/
+.piolibdeps/
+*.pyc
+__pycache__/
+
+M5PaperMono-OTP-Demo/
+M5PaperMono-UserDemo/

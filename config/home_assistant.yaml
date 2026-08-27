@@ -1,0 +1,112 @@
+# All Home Assistant-specific entity IDs live here.  Hardware and rendering do
+# not need to change when installing the PaperMono in another Home Assistant.
+substitutions:
+  ha_weather_entity: weather.estacion_meteorologica
+  ha_indoor_temperature_entity: sensor.ws2900_v2_02_03_indoor_temperature
+  ha_indoor_humidity_entity: sensor.ws2900_v2_02_03_indoor_humidity
+  ha_outdoor_pm25_entity: sensor.ws2900_v2_02_03_pm2_5_1
+  ha_indoor_co2_entity: sensor.i_9psl_dioxido_de_carbono
+  ha_indoor_pm25_entity: sensor.i_9psl_pm2_5
+  ha_indoor_voc_entity: sensor.i_9psl_indice_cov
+  ha_solar_power_entity: sensor.ingeteam_pv_internal_total_power
+  ha_house_power_entity: sensor.ingeteam_total_loads_power
+  ha_grid_import_entity: sensor.ingeteam_external_meter_ac_active_power
+  ha_grid_export_entity: sensor.ingeteam_external_meter_ac_active_power_returned
+  ha_battery_charge_entity: sensor.ingeteam_battery_charging_power
+  ha_battery_discharge_entity: sensor.ingeteam_battery_discharging_power
+  ha_battery_soc_entity: sensor.ingeteam_battery_state_of_charge
+
+  # Reserved for a later controls phase; no services are called yet.
+  ha_control_climate_entity: climate.ac_salon_inteligente
+  ha_control_light_entity: light.sofa
+  ha_control_cover_entity: cover.persiana_jardin
+  ha_control_vacuum_entity: vacuum.lefant_m210_pro_omni_3
+  ha_control_climate_name: Clima
+  ha_control_light_name: Luces
+  ha_control_cover_name: Persiana
+  ha_control_vacuum_name: Robot
+
+text_sensor:
+  - platform: homeassistant
+    id: ha_weather_state
+    entity_id: ${ha_weather_entity}
+    internal: true
+
+sensor:
+  - platform: homeassistant
+    id: ha_indoor_temperature
+    entity_id: ${ha_indoor_temperature_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_indoor_humidity
+    entity_id: ${ha_indoor_humidity_entity}
+    internal: true
+
+  # These are documented standard weather attributes in Home Assistant.  They
+  # are independently optional: a missing attribute simply has no state.
+  - platform: homeassistant
+    id: ha_weather_temperature
+    entity_id: ${ha_weather_entity}
+    attribute: temperature
+    internal: true
+  - platform: homeassistant
+    id: ha_weather_humidity
+    entity_id: ${ha_weather_entity}
+    attribute: humidity
+    internal: true
+  - platform: homeassistant
+    id: ha_weather_pressure
+    entity_id: ${ha_weather_entity}
+    attribute: pressure
+    internal: true
+  - platform: homeassistant
+    id: ha_weather_wind_speed
+    entity_id: ${ha_weather_entity}
+    attribute: wind_speed
+    internal: true
+
+  - platform: homeassistant
+    id: ha_outdoor_pm25
+    entity_id: ${ha_outdoor_pm25_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_indoor_co2
+    entity_id: ${ha_indoor_co2_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_indoor_pm25
+    entity_id: ${ha_indoor_pm25_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_indoor_voc
+    entity_id: ${ha_indoor_voc_entity}
+    internal: true
+
+  - platform: homeassistant
+    id: ha_solar_power
+    entity_id: ${ha_solar_power_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_house_power
+    entity_id: ${ha_house_power_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_grid_import
+    entity_id: ${ha_grid_import_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_grid_export
+    entity_id: ${ha_grid_export_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_battery_charge
+    entity_id: ${ha_battery_charge_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_battery_discharge
+    entity_id: ${ha_battery_discharge_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_battery_soc
+    entity_id: ${ha_battery_soc_entity}
+    internal: true

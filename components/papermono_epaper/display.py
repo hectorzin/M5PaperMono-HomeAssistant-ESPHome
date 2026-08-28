@@ -59,7 +59,7 @@ CONFIG_SCHEMA = (
         {
             cv.GenerateID(): cv.declare_id(PaperMonoEpaper),
             cv.Optional(CONF_ROTATION, default=0): validate_rotation,
-            cv.Optional(CONF_FULL_UPDATE_EVERY, default=10): cv.int_range(min=1, max=255),
+            cv.Optional(CONF_FULL_UPDATE_EVERY, default=0): cv.int_range(min=0, max=255),
             cv.Optional(CONF_DIMENSIONS): validate_dimensions,
             cv.Optional(CONF_TRANSFORM): cv.Schema(
                 {

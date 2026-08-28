@@ -153,7 +153,8 @@ display:
     id: epaper_display
     spi_id: spi_epd
     update_interval: never
-    full_update_every: 10
+    # 0 = screensaver never auto-FULL from partial_count; explicit policies request FULL.
+    full_update_every: 0
     transform:
       mirror_x: true
       mirror_y: false
@@ -365,10 +366,13 @@ display:
         // Fixed 2x2 energy nodes. Parallel central risers keep grid and
         // battery paths independent without attaching either one to a node.
         it.line(28, 489, w - 28, 489, Color::BLACK);
-        const int solar_x = 120, solar_y = 566;
-        const int grid_x = 120, grid_y = 690;
-        const int house_x = 360, house_y = 555;
-        const int battery_x = 360, battery_y = 690;
+        const int energy_top_y = 566;
+        const int energy_bottom_y = 690;
+        const int energy_mid_y = (energy_top_y + energy_bottom_y) / 2;
+        const int solar_x = 120;
+        const int grid_x = 120;
+        const int house_x = 360;
+        const int battery_x = 360;
         const int grid_riser_x = 224;
         const int battery_riser_x = 256;
         auto node = [&](int x, int y) { it.circle(x, y, 29, Color::BLACK); };
@@ -376,31 +380,31 @@ display:
         auto arrow_left = [&](int x, int y) { it.filled_triangle(x - 8, y, x + 4, y - 6, x + 4, y + 6, Color::BLACK); };
         auto arrow_up = [&](int x, int y) { it.filled_triangle(x, y - 8, x - 6, y + 4, x + 6, y + 4, Color::BLACK); };
         auto arrow_down = [&](int x, int y) { it.filled_triangle(x, y + 8, x - 6, y - 4, x + 6, y - 4, Color::BLACK); };
-        it.line(solar_x + 27, solar_y, house_x - 27, house_y, Color::BLACK);
-        it.line(grid_x + 27, grid_y, grid_riser_x, grid_y, Color::BLACK);
-        it.line(battery_riser_x, battery_y, battery_x - 27, battery_y, Color::BLACK);
-        it.line(grid_riser_x, solar_y, grid_riser_x, grid_y, Color::BLACK);
-        it.line(battery_riser_x, solar_y, battery_riser_x, battery_y, Color::BLACK);
-        if (solar_flow_active) arrow_right(180, solar_y);  // SOLAR -> bus
+        it.line(solar_x + 27, energy_top_y, house_x - 27, energy_top_y, Color::BLACK);
+        it.line(grid_x + 27, energy_bottom_y, grid_riser_x, energy_bottom_y, Color::BLACK);
+        it.line(battery_riser_x, energy_bottom_y, battery_x - 27, energy_bottom_y, Color::BLACK);
+        it.line(grid_riser_x, energy_top_y, grid_riser_x, energy_bottom_y, Color::BLACK);
+        it.line(battery_riser_x, energy_top_y, battery_riser_x, energy_bottom_y, Color::BLACK);
+        if (solar_flow_active) arrow_right(180, energy_top_y);  // SOLAR -> bus
         if (grid_import_flow_active) {
-          arrow_right(180, grid_y);                                            // RED -> riser
-          arrow_up(grid_riser_x, 628);                                         // riser -> bus
+          arrow_right(180, energy_bottom_y);                                  // RED -> riser
+          arrow_up(grid_riser_x, energy_mid_y);                                // riser -> bus
         } else if (grid_export_flow_active) {
-          arrow_down(grid_riser_x, 628);                                       // bus -> riser
-          arrow_left(180, grid_y);                                             // riser -> RED
+          arrow_down(grid_riser_x, energy_mid_y);                              // bus -> riser
+          arrow_left(180, energy_bottom_y);                                    // riser -> RED
         }
-        if (use_demo_globally || (house_available && id(ha_house_power).state > 5.0f)) arrow_right(300, house_y); // bus -> CASA
+        if (use_demo_globally || (house_available && id(ha_house_power).state > 5.0f)) arrow_right(300, energy_top_y); // bus -> CASA
         if (battery_charge_flow_active) {
-          arrow_down(battery_riser_x, 628);                                    // bus -> riser
-          arrow_right(300, battery_y);                                         // riser -> BATERIA
+          arrow_down(battery_riser_x, energy_mid_y);                           // bus -> riser
+          arrow_right(300, energy_bottom_y);                                   // riser -> BATERIA
         } else if (battery_discharge_flow_active) {
-          arrow_left(300, battery_y);                                          // BATERIA -> riser
-          arrow_up(battery_riser_x, 628);                                      // riser -> bus
+          arrow_left(300, energy_bottom_y);                                    // BATERIA -> riser
+          arrow_up(battery_riser_x, energy_mid_y);                             // riser -> bus
         }
-        node(solar_x, solar_y); node(grid_x, grid_y); node(house_x, house_y); node(battery_x, battery_y);
-        it.image(solar_x, solar_y, id(energy_solar_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
-        it.image(grid_x, grid_y, id(energy_grid_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
-        it.image(house_x, house_y, id(energy_house_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+        node(solar_x, energy_top_y); node(grid_x, energy_bottom_y); node(house_x, energy_top_y); node(battery_x, energy_bottom_y);
+        it.image(solar_x, energy_top_y, id(energy_solar_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+        it.image(grid_x, energy_bottom_y, id(energy_grid_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+        it.image(house_x, energy_top_y, id(energy_house_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
         auto draw_battery_icon = [&](int x, int y) {
           if (!battery_soc_state_available) {
             it.image(x, y, id(energy_battery_outline_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
@@ -432,12 +436,12 @@ display:
           else
             it.image(x, y, id(energy_battery_full_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
         };
-        draw_battery_icon(battery_x, battery_y);
-        it.printf(solar_x, 596, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", solar_text);
-        it.printf(grid_x, 720, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", grid_text);
-        it.printf(house_x, 596, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", house_text);
-        it.printf(battery_x, 636, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", soc_text);
-        it.printf(battery_x, 720, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", battery_text);
+        draw_battery_icon(battery_x, energy_bottom_y);
+        it.printf(solar_x, energy_top_y + 30, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", solar_text);
+        it.printf(grid_x, energy_bottom_y + 30, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", grid_text);
+        it.printf(house_x, energy_top_y + 41, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", house_text);
+        it.printf(battery_x, energy_bottom_y - 54, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", soc_text);
+        it.printf(battery_x, energy_bottom_y + 30, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", battery_text);
 
         if (use_demo_globally)
           it.print(404, 100, id(font_label), Color::BLACK, "DEMO");

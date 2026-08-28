@@ -59,13 +59,23 @@ void PaperMonoEpaper::setup() {
 
 void PaperMonoEpaper::dump_config() {
   LOG_DISPLAY("", "PaperMono E-Paper", this);
-  ESP_LOGCONFIG(TAG,
-                "  Native: %ux%u\n"
-                "  Full update every: %u partials\n"
-                "  Mirror X: %s\n"
-                "  Mirror Y: %s",
-                NATIVE_WIDTH, NATIVE_HEIGHT, this->full_update_every_,
-                YESNO(this->transform_ & TRANSFORM_MIRROR_X), YESNO(this->transform_ & TRANSFORM_MIRROR_Y));
+  if (this->full_update_every_ == 0) {
+    ESP_LOGCONFIG(TAG,
+                  "  Native: %ux%u\n"
+                  "  Full update every: disabled (explicit FULL only)\n"
+                  "  Mirror X: %s\n"
+                  "  Mirror Y: %s",
+                  NATIVE_WIDTH, NATIVE_HEIGHT, YESNO(this->transform_ & TRANSFORM_MIRROR_X),
+                  YESNO(this->transform_ & TRANSFORM_MIRROR_Y));
+  } else {
+    ESP_LOGCONFIG(TAG,
+                  "  Native: %ux%u\n"
+                  "  Full update every: %u partials\n"
+                  "  Mirror X: %s\n"
+                  "  Mirror Y: %s",
+                  NATIVE_WIDTH, NATIVE_HEIGHT, this->full_update_every_,
+                  YESNO(this->transform_ & TRANSFORM_MIRROR_X), YESNO(this->transform_ & TRANSFORM_MIRROR_Y));
+  }
   LOG_PIN("  CS Pin: ", this->cs_);
   LOG_PIN("  DC Pin: ", this->dc_pin_);
   LOG_PIN("  Reset Pin: ", this->reset_pin_);
@@ -413,10 +423,14 @@ void PaperMonoEpaper::finish_refresh_(bool success) {
       this->force_full_next_ = false;
     } else {
       this->partial_count_++;
-      ESP_LOGI(TAG, "partial count %u/%u", this->partial_count_, this->full_update_every_);
-      if (this->partial_count_ >= this->full_update_every_) {
-        this->force_full_next_ = true;
-        ESP_LOGI(TAG, "next refresh will be FULL");
+      if (this->full_update_every_ > 0) {
+        ESP_LOGI(TAG, "partial count %u/%u", this->partial_count_, this->full_update_every_);
+        if (this->partial_count_ >= this->full_update_every_) {
+          this->force_full_next_ = true;
+          ESP_LOGI(TAG, "next refresh will be FULL");
+        }
+      } else {
+        ESP_LOGI(TAG, "partial count %u (auto FULL disabled)", this->partial_count_);
       }
     }
   }

@@ -21,6 +21,10 @@ static constexpr uint8_t M5PM1_REG_GPIO_OUT = 0x11;
 static constexpr uint8_t M5PM1_REG_GPIO_DRV = 0x13;
 static constexpr uint8_t M5PM1_REG_GPIO_PUPD0 = 0x14;
 static constexpr uint8_t M5PM1_REG_GPIO_FUNC0 = 0x16;
+static constexpr uint8_t M5PM1_REG_GPIO_FUNC1 = 0x17;
+static constexpr uint8_t M5PM1_REG_PWM0_L = 0x30;
+static constexpr uint8_t M5PM1_REG_PWM0_HC = 0x31;
+static constexpr uint8_t M5PM1_REG_PWM_FREQ_L = 0x34;
 static constexpr uint8_t M5PM1_REG_IRQ_STATUS1 = 0x40;
 static constexpr uint8_t M5PM1_REG_IRQ_STATUS2 = 0x41;
 static constexpr uint8_t M5PM1_REG_IRQ_STATUS3 = 0x42;
@@ -41,8 +45,19 @@ static constexpr uint8_t M5PM1_IRQ_SYS_MASK_ALL = 0x3F;
 
 // M5PM1 GPIO1 is the PaperMono IRQ output (PY_IRQ -> ESP32 GPIO1).
 static constexpr uint8_t M5PM1_GPIO_NUM_1 = 1;
+// M5PM1 GPIO3 is frontlight PWM0 (PYG3_BL_PWM / BL_FB).
+static constexpr uint8_t M5PM1_GPIO_NUM_3 = 3;
+// M5PM1 GPIO4 is BMI270 INT1 (IMU_INT).
+static constexpr uint8_t M5PM1_GPIO_NUM_4 = 4;
 static constexpr uint8_t M5PM1_GPIO_FUNC_IRQ = 0x01;
+static constexpr uint8_t M5PM1_GPIO_FUNC_OTHER = 0x03;
 static constexpr uint8_t M5PM1_GPIO_PULL_UP = 0x01;
+
+// M5GFX Light_M5PaperMono: 5 kHz PWM on GPIO3 / PWM0.
+static constexpr uint16_t M5PM1_FRONTLIGHT_PWM_FREQ_HZ = 5000;
+
+// IRQ_STATUS1 GPIO flags (M5PM1.h).
+static constexpr uint8_t M5PM1_IRQ_GPIO4 = 0x10;
 
 static constexpr uint8_t M5PM1_REG_BTN_CFG_1 = 0x49;
 // BTN_CFG_1[0] SINGLE_RST_DIS: 0=enable single-click reset, 1=disable (setSingleResetDisable).
@@ -114,9 +129,131 @@ bool M5PM1Component::configure_gpio1_irq_output_() {
   return true;
 }
 
+bool M5PM1Component::configure_gpio4_imu_input_() {
+  // M5PaperMono-UserDemo: PM1 G4 input, pull-up, push-pull (IMU_INT active-low).
+  const uint8_t pin = M5PM1_GPIO_NUM_4;
+  const uint8_t pin_mask = static_cast<uint8_t>(1 << pin);
+
+  if (!this->update_reg_bit_(M5PM1_REG_GPIO_MODE, pin_mask, false)) {
+    return false;
+  }
+
+  uint8_t pupd1 = 0;
+  if (!this->read_byte(M5PM1_REG_GPIO_PUPD0 + 1, &pupd1)) {
+    return false;
+  }
+  pupd1 &= static_cast<uint8_t>(~(0x03 << ((pin - 4) * 2)));
+  pupd1 |= static_cast<uint8_t>(M5PM1_GPIO_PULL_UP << ((pin - 4) * 2));
+  if (!this->write_byte(M5PM1_REG_GPIO_PUPD0 + 1, pupd1)) {
+    return false;
+  }
+
+  if (!this->update_reg_bit_(M5PM1_REG_GPIO_DRV, pin_mask, false)) {
+    return false;
+  }
+
+  uint8_t func1 = 0;
+  if (!this->read_byte(M5PM1_REG_GPIO_FUNC1, &func1)) {
+    return false;
+  }
+  func1 &= static_cast<uint8_t>(~(0x03 << ((pin - 4) * 2)));
+  if (!this->write_byte(M5PM1_REG_GPIO_FUNC1, func1)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool M5PM1Component::configure_frontlight_pwm_hw_() {
+  // M5GFX Light_M5PaperMono::init
+  const uint8_t pin = M5PM1_GPIO_NUM_3;
+  const uint8_t pin_mask = static_cast<uint8_t>(1 << pin);
+
+  if (!this->update_reg_bit_(M5PM1_REG_GPIO_DRV, pin_mask, false)) {
+    return false;
+  }
+
+  uint8_t func0 = 0;
+  if (!this->read_byte(M5PM1_REG_GPIO_FUNC0, &func0)) {
+    return false;
+  }
+  func0 |= static_cast<uint8_t>(M5PM1_GPIO_FUNC_OTHER << (pin * 2));
+  if (!this->write_byte(M5PM1_REG_GPIO_FUNC0, func0)) {
+    return false;
+  }
+
+  const uint8_t freq_buf[2] = {static_cast<uint8_t>(M5PM1_FRONTLIGHT_PWM_FREQ_HZ & 0xFF),
+                               static_cast<uint8_t>((M5PM1_FRONTLIGHT_PWM_FREQ_HZ >> 8) & 0xFF)};
+  if (!this->write_byte(M5PM1_REG_PWM_FREQ_L, freq_buf[0])) {
+    return false;
+  }
+  if (!this->write_byte(M5PM1_REG_PWM_FREQ_L + 1, freq_buf[1])) {
+    return false;
+  }
+
+  this->frontlight_hw_ready_ = true;
+  ESP_LOGI(TAG, "Frontlight PWM init: GPIO3/PWM0 @ %u Hz", M5PM1_FRONTLIGHT_PWM_FREQ_HZ);
+  return true;
+}
+
+bool M5PM1Component::configure_imu_irq_route_() {
+  if (!this->configure_gpio4_imu_input_()) {
+    ESP_LOGW(TAG, "PM1 GPIO4 IMU input config failed");
+    return false;
+  }
+
+  if (!this->write_byte(M5PM1_REG_IRQ_MASK1, 0x0F)) {
+    ESP_LOGW(TAG, "PM1 IRQ_MASK1 GPIO4 unmask failed");
+    return false;
+  }
+
+  this->clear_all_irq_status_();
+  ESP_LOGI(TAG, "PM1 IMU IRQ route ready on GPIO4");
+  return true;
+}
+
+bool M5PM1Component::set_frontlight_level(uint8_t percent) {
+  if (percent > 100) {
+    percent = 100;
+  }
+
+  if (!this->frontlight_hw_ready_) {
+    if (!this->configure_frontlight_pwm_hw_()) {
+      ESP_LOGW(TAG, "Frontlight PWM hardware init failed");
+      return false;
+    }
+  }
+
+  if (percent == 0) {
+    if (!this->write_byte(M5PM1_REG_PWM0_HC, 0x00)) {
+      ESP_LOGW(TAG, "Frontlight off failed (PWM0_HC)");
+      return false;
+    }
+    ESP_LOGD(TAG, "Frontlight -> 0%% (PWM0 disabled)");
+    return true;
+  }
+
+  const uint32_t brightness = (static_cast<uint32_t>(percent) * 255U) / 100U;
+  const uint32_t br = brightness * brightness;
+  const uint8_t pwm_l = static_cast<uint8_t>((br >> 4) & 0xFF);
+  const uint8_t pwm_h = static_cast<uint8_t>(((br >> 12) & 0x0F) | 0x10);
+
+  if (!this->write_byte(M5PM1_REG_PWM0_L, pwm_l)) {
+    ESP_LOGW(TAG, "Frontlight duty low write failed");
+    return false;
+  }
+  if (!this->write_byte(M5PM1_REG_PWM0_HC, pwm_h)) {
+    ESP_LOGW(TAG, "Frontlight duty high write failed");
+    return false;
+  }
+
+  ESP_LOGD(TAG, "Frontlight -> %u%% (PWM0 duty L=0x%02X H=0x%02X)", percent, pwm_l, pwm_h);
+  return true;
+}
+
 bool M5PM1Component::configure_usb_irq_masks_() {
-  // usb_interrupt_sleep.ino: mask GPIO/button IRQs, then unmask 5VIN insert/remove.
-  if (!this->write_byte(M5PM1_REG_IRQ_MASK1, 0x1F)) {
+  // usb_interrupt_sleep.ino: mask GPIO/button IRQs except IMU GPIO4, then unmask 5VIN insert/remove.
+  if (!this->write_byte(M5PM1_REG_IRQ_MASK1, 0x0F)) {
     return false;
   }
   if (!this->write_byte(M5PM1_REG_IRQ_MASK3, 0x07)) {
@@ -154,6 +291,13 @@ optional<bool> M5PM1Component::get_single_reset_disabled_() {
 }
 
 void M5PM1Component::setup() {
+  if (!this->configure_frontlight_pwm_hw_()) {
+    ESP_LOGW(TAG, "Frontlight PWM init deferred");
+  }
+  if (!this->set_frontlight_level(0)) {
+    ESP_LOGW(TAG, "Frontlight off during setup failed");
+  }
+
   if (!this->update_reg_bit_(M5PM1_REG_GPIO_DRV, M5PM1_GPIO_DRV_LED_EN, false)) {
     ESP_LOGW(TAG, "GPIO_DRV LED_EN push-pull config failed");
   }
@@ -220,13 +364,29 @@ void M5PM1Component::loop() {
 }
 
 void M5PM1Component::process_irq_() {
+  uint8_t gpio_irq = 0;
+  if (!this->read_byte(M5PM1_REG_IRQ_STATUS1, &gpio_irq)) {
+    ESP_LOGW(TAG, "IRQ_STATUS1 read failed");
+    return;
+  }
+
+  if (gpio_irq & M5PM1_IRQ_GPIO4) {
+    ESP_LOGD(TAG, "USB IRQ: IMU GPIO4 motion (IRQ_STATUS1 bit4)");
+    if (this->motion_handler_) {
+      this->motion_handler_();
+    }
+    const uint8_t clear_gpio = static_cast<uint8_t>(~gpio_irq);
+    this->write_byte(M5PM1_REG_IRQ_STATUS1, clear_gpio);
+    gpio_irq &= static_cast<uint8_t>(~M5PM1_IRQ_GPIO4);
+  }
+
   uint8_t sys_irq = 0;
   if (!this->read_byte(M5PM1_REG_IRQ_STATUS2, &sys_irq)) {
     ESP_LOGW(TAG, "IRQ_STATUS2 read failed");
     return;
   }
 
-  if (sys_irq == 0) {
+  if (gpio_irq == 0 && sys_irq == 0) {
     this->clear_all_irq_status_();
     return;
   }
@@ -238,13 +398,18 @@ void M5PM1Component::process_irq_() {
     ESP_LOGI(TAG, "USB IRQ: 5VIN removed (IRQ_STATUS2 bit1)");
   }
 
-  // irqGetSysStatus(..., M5PM1_CLEAN_ONCE): write-0-to-clear triggered bits.
-  const uint8_t clear_val = static_cast<uint8_t>(~sys_irq);
-  this->write_byte(M5PM1_REG_IRQ_STATUS2, clear_val);
-  this->write_byte(M5PM1_REG_IRQ_STATUS1, 0x00);
-  this->write_byte(M5PM1_REG_IRQ_STATUS3, 0x00);
+  if (sys_irq != 0) {
+    const uint8_t clear_val = static_cast<uint8_t>(~sys_irq);
+    this->write_byte(M5PM1_REG_IRQ_STATUS2, clear_val);
+    this->refresh_power_and_battery();
+  }
 
-  this->refresh_power_and_battery();
+  if (gpio_irq != 0) {
+    const uint8_t clear_gpio = static_cast<uint8_t>(~gpio_irq);
+    this->write_byte(M5PM1_REG_IRQ_STATUS1, clear_gpio);
+  }
+
+  this->write_byte(M5PM1_REG_IRQ_STATUS3, 0x00);
 }
 
 bool M5PM1Component::set_status_red_led(bool on) {

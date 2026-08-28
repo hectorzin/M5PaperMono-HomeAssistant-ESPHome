@@ -1,0 +1,13 @@
+# Frontlight activity timeout and BMI270 motion wake for PaperMono.
+papermono_activity:
+  id: papermono_activity_hub
+  m5pm1_id: m5pm1_pmu
+  timeout: 30s
+  on_brightness: 30
+
+papermono_imu:
+  id: papermono_imu_hub
+  i2c_id: bus_main
+  address: 0x68
+  m5pm1_id: m5pm1_pmu
+  activity_id: papermono_activity_hub

@@ -9,7 +9,7 @@ packages:
   hardware: !include packages/hardware.yaml
   battery: !include packages/battery.yaml
   status_led: !include packages/status_led.yaml
-  frontlight: !include packages/frontlight.yaml
   home_assistant_entities: !include config/home_assistant.yaml
   home_assistant_runtime: !include packages/home_assistant.yaml
   ui: !include packages/ui.yaml
+  frontlight: !include packages/frontlight.yaml

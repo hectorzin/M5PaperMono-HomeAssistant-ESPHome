@@ -2,6 +2,8 @@
 papermono_activity:
   id: papermono_activity_hub
   m5pm1_id: m5pm1_pmu
+  display_id: epaper_display
+  controls_view: controls_view
   timeout: 30s
   on_brightness: 30
 

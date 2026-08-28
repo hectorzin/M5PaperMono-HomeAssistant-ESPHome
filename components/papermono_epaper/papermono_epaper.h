@@ -42,7 +42,8 @@ class PaperMonoEpaper
     this->transform_ = transform;
     this->update_effective_transform_();
   }
-  void set_full_update_every(uint8_t every) { this->full_update_every_ = every == 0 ? 1 : every; }
+  // 0 disables automatic FULL from partial_count; values > 0 enable the threshold.
+  void set_full_update_every(uint8_t every) { this->full_update_every_ = every; }
   uint8_t get_partial_count() const { return this->partial_count_; }
   bool is_idle() const;
   bool has_baseline() const;

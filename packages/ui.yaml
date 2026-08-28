@@ -23,6 +23,9 @@ font:
   - file: "fonts/DejaVuSans.ttf"
     id: font_label
     size: 18
+  - file: "fonts/DejaVuSans.ttf"
+    id: font_device_battery
+    size: 20
 
 # These are the same compact Material Design weather pictograms used by the
 # reference e-paper dashboard. ESPHome embeds them at build time, so they stay
@@ -142,6 +145,90 @@ globals:
     type: int
     restore_value: no
     initial_value: '-1'
+  # Presentation-only five-sample moving average for the PaperMono battery.
+  - id: paper_mono_battery_sample_0
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: paper_mono_battery_sample_1
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: paper_mono_battery_sample_2
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: paper_mono_battery_sample_3
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: paper_mono_battery_sample_4
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: paper_mono_battery_sample_index
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: paper_mono_battery_sample_count
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: paper_mono_battery_sample_sum
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: paper_mono_battery_last_raw
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+  - id: paper_mono_battery_display_level
+    type: float
+    restore_value: no
+    initial_value: 'NAN'
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (!id(paper_mono_battery_level).has_state() ||
+              std::isnan(id(paper_mono_battery_level).state) ||
+              id(paper_mono_battery_level).state < 0.0f ||
+              id(paper_mono_battery_level).state > 100.0f)
+            return;
+
+          const float raw = id(paper_mono_battery_level).state;
+          if (!std::isnan(id(paper_mono_battery_last_raw)) &&
+              raw == id(paper_mono_battery_last_raw))
+            return;
+          id(paper_mono_battery_last_raw) = raw;
+
+          float *sample = nullptr;
+          switch (id(paper_mono_battery_sample_index)) {
+            case 0: sample = &id(paper_mono_battery_sample_0); break;
+            case 1: sample = &id(paper_mono_battery_sample_1); break;
+            case 2: sample = &id(paper_mono_battery_sample_2); break;
+            case 3: sample = &id(paper_mono_battery_sample_3); break;
+            default: sample = &id(paper_mono_battery_sample_4); break;
+          }
+          if (id(paper_mono_battery_sample_count) == 5)
+            id(paper_mono_battery_sample_sum) -= *sample;
+          else
+            id(paper_mono_battery_sample_count)++;
+          *sample = raw;
+          id(paper_mono_battery_sample_sum) += raw;
+          id(paper_mono_battery_sample_index) =
+              (id(paper_mono_battery_sample_index) + 1) % 5;
+
+          const float average = id(paper_mono_battery_sample_sum) /
+                                id(paper_mono_battery_sample_count);
+          float rounded = floorf(average + 0.5f);
+          const bool external_power = id(paper_mono_external_power).has_state() &&
+                                      id(paper_mono_external_power).state;
+          if (!external_power && !std::isnan(id(paper_mono_battery_display_level)) &&
+              rounded > id(paper_mono_battery_display_level))
+            rounded = id(paper_mono_battery_display_level);
+          id(paper_mono_battery_display_level) = rounded;
 
 # The complete display entry remains here because ESPHome merges display lists,
 # not individual display objects; splitting it would be fragile.
@@ -285,11 +372,47 @@ display:
             it.image(x, y, id(weather_windy_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
         };
 
+        auto draw_device_battery = [&](int x, int y) {
+          const bool battery_level_available = !std::isnan(id(paper_mono_battery_display_level)) &&
+                                                valid(id(paper_mono_battery_display_level), 0.0f, 100.0f);
+          const bool external_power_available = id(paper_mono_external_power).has_state();
+          const int body_width = 32;
+          const int body_height = 20;
+          it.rectangle(x, y, body_width, body_height, Color::BLACK);
+          it.filled_rectangle(x + body_width, y + 7, 4, 6, Color::BLACK);
+
+          if (battery_level_available) {
+            const float level = id(paper_mono_battery_display_level);
+            int bars = 0;
+            if (level >= 25.0f) bars = 1;
+            if (level >= 50.0f) bars = 2;
+            if (level >= 75.0f) bars = 3;
+            if (level >= 90.0f) bars = 4;
+            for (int i = 0; i < bars; i++)
+              it.filled_rectangle(x + 3 + i * 7, y + 3, 5, 14, Color::BLACK);
+            it.printf(x + 41, y + 10, id(font_device_battery), Color::BLACK,
+                      TextAlign::CENTER_LEFT, "%.0f%%", level);
+            it.printf(x + 42, y + 10, id(font_device_battery), Color::BLACK,
+                      TextAlign::CENTER_LEFT, "%.0f%%", level);
+          } else {
+            it.printf(x + 41, y + 10, id(font_device_battery), Color::BLACK,
+                      TextAlign::CENTER_LEFT, "%s", "--%");
+            it.printf(x + 42, y + 10, id(font_device_battery), Color::BLACK,
+                      TextAlign::CENTER_LEFT, "%s", "--%");
+          }
+
+          if (external_power_available && id(paper_mono_external_power).state) {
+            // Two overlapping filled triangles form a chunky bolt inside the cell.
+            it.filled_triangle(x + 20, y + 3, x + 14, y + 10, x + 18, y + 10, Color::BLACK);
+            it.filled_triangle(x + 18, y + 9, x + 24, y + 9, x + 15, y + 17, Color::BLACK);
+          }
+        };
+
         // Header: the HA time source is intentionally the sole source of truth.
         const auto now = id(ha_time).now();
         if (now.is_valid()) {
           const int displayed_minute = (now.minute / 5) * 5;
-          it.printf(28, 20, id(font_time), Color::BLACK, "%02d:%02d", now.hour, displayed_minute);
+          it.printf(28, 31, id(font_time), Color::BLACK, "%02d:%02d", now.hour, displayed_minute);
           // ESPHome reports Sunday as 1 through Saturday as 7. Convert to a
           // zero-based Spanish lookup so the device locale is irrelevant.
           static const char *const WEEKDAYS[] = {"DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"};
@@ -298,13 +421,14 @@ display:
           const int month = now.month >= 1 && now.month <= 12 ? now.month - 1 : 0;
           char date_text[32];
           snprintf(date_text, sizeof(date_text), "%s %d %s", WEEKDAYS[weekday], now.day_of_month, MONTHS[month]);
-          it.print(32, 100, id(font_label), Color::BLACK, date_text);
+          it.print(32, 111, id(font_label), Color::BLACK, date_text);
         } else {
-          it.print(28, 20, id(font_time), Color::BLACK, "--:--");
-          it.print(32, 100, id(font_label), Color::BLACK, "---");
+          it.print(28, 31, id(font_time), Color::BLACK, "--:--");
+          it.print(32, 111, id(font_label), Color::BLACK, "---");
         }
-        draw_weather_icon(348, 27);
-        it.line(28, 132, w - 28, 132, Color::BLACK);
+        draw_weather_icon(348, 38);
+        draw_device_battery(380, 13);
+        it.line(28, 143, w - 28, 143, Color::BLACK);
 
         // Both environments share the same left-hand reading template.
         auto draw_environment_left = [&](const char *title, const char *temperature,
@@ -313,19 +437,19 @@ display:
           it.print(32, y + 30, id(font_title), Color::BLACK, temperature);
           it.print(32, y + 90, id(font_body), Color::BLACK, humidity);
         };
-        draw_environment_left("EXTERIOR", outdoor_temp_text, humidity_text, 150);
-        it.printf(350, 180, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", wind_text);
-        it.printf(350, 240, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", pm_outdoor_text);
+        draw_environment_left("EXTERIOR", outdoor_temp_text, humidity_text, 161);
+        it.printf(350, 191, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", wind_text);
+        it.printf(350, 251, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", pm_outdoor_text);
 
-        it.line(28, 302, w - 28, 302, Color::BLACK);
-        draw_environment_left("INTERIOR", indoor_temp_text, indoor_humidity_text, 320);
-        it.printf(350, 350, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", co2_text);
-        it.printf(350, 410, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", pm_indoor_text);
+        it.line(28, 313, w - 28, 313, Color::BLACK);
+        draw_environment_left("INTERIOR", indoor_temp_text, indoor_humidity_text, 331);
+        it.printf(350, 361, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", co2_text);
+        it.printf(350, 421, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", pm_indoor_text);
 
         // Fixed 2x2 energy nodes. Parallel central risers keep grid and
         // battery paths independent without attaching either one to a node.
-        it.line(28, 478, w - 28, 478, Color::BLACK);
-        const int solar_x = 120, solar_y = 555;
+        it.line(28, 489, w - 28, 489, Color::BLACK);
+        const int solar_x = 120, solar_y = 566;
         const int grid_x = 120, grid_y = 690;
         const int house_x = 360, house_y = 555;
         const int battery_x = 360, battery_y = 690;
@@ -344,18 +468,18 @@ display:
         if (solar_flow_active) arrow_right(180, solar_y);  // SOLAR -> bus
         if (grid_import_flow_active) {
           arrow_right(180, grid_y);                                            // RED -> riser
-          arrow_up(grid_riser_x, 622);                                         // riser -> bus
+          arrow_up(grid_riser_x, 628);                                         // riser -> bus
         } else if (grid_export_flow_active) {
-          arrow_down(grid_riser_x, 622);                                       // bus -> riser
+          arrow_down(grid_riser_x, 628);                                       // bus -> riser
           arrow_left(180, grid_y);                                             // riser -> RED
         }
         if (use_demo_globally || (house_available && id(ha_house_power).state > 5.0f)) arrow_right(300, house_y); // bus -> CASA
         if (battery_charge_flow_active) {
-          arrow_down(battery_riser_x, 622);                                    // bus -> riser
+          arrow_down(battery_riser_x, 628);                                    // bus -> riser
           arrow_right(300, battery_y);                                         // riser -> BATERIA
         } else if (battery_discharge_flow_active) {
           arrow_left(300, battery_y);                                          // BATERIA -> riser
-          arrow_up(battery_riser_x, 622);                                      // riser -> bus
+          arrow_up(battery_riser_x, 628);                                      // riser -> bus
         }
         node(solar_x, solar_y); node(grid_x, grid_y); node(house_x, house_y); node(battery_x, battery_y);
         it.image(solar_x, solar_y, id(energy_solar_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
@@ -393,9 +517,9 @@ display:
             it.image(x, y, id(energy_battery_full_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
         };
         draw_battery_icon(battery_x, battery_y);
-        it.printf(solar_x, 585, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", solar_text);
+        it.printf(solar_x, 596, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", solar_text);
         it.printf(grid_x, 720, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", grid_text);
-        it.printf(house_x, 585, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", house_text);
+        it.printf(house_x, 596, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", house_text);
         it.printf(battery_x, 636, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", soc_text);
         it.printf(battery_x, 720, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "%s", battery_text);
 

@@ -12,7 +12,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [papermono_epaper, m5pm1, m5ioe1]
+    components: [papermono_epaper, m5pm1, m5ioe1, papermono_activity, papermono_imu]
 
 i2c:
   id: bus_main
@@ -74,6 +74,7 @@ touchscreen:
       y_min: 5
       y_max: 795
     on_touch:
+      - lambda: 'id(papermono_activity_hub).report_touch();'
       - lambda: |-
           const int x = touch.x;
           const int y = touch.y;

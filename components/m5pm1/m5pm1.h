@@ -6,6 +6,8 @@
  */
 #pragma once
 
+#include <functional>
+
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
@@ -31,6 +33,13 @@ class M5PM1Component : public Component, public i2c::I2CDevice {
   // PaperMono status LED red channel (PMIC LED_EN / PM_LED).
   bool set_status_red_led(bool on);
 
+  // PaperMono frontlight via M5PM1 GPIO3 / PWM0 (M5GFX Light_M5PaperMono).
+  bool set_frontlight_level(uint8_t percent);
+
+  // BMI270 INT1 -> M5PM1 GPIO4 -> PY_IRQ (ESP32 GPIO1).
+  bool configure_imu_irq_route_();
+  void set_motion_handler(std::function<void()> handler) { this->motion_handler_ = std::move(handler); }
+
   // Read PWR_SRC + VBAT and publish linked sensors. Safe to call from the main loop only.
   void refresh_power_and_battery();
 
@@ -39,7 +48,9 @@ class M5PM1Component : public Component, public i2c::I2CDevice {
 
   bool update_reg_bit_(uint8_t reg, uint8_t mask, bool set);
   bool configure_gpio1_irq_output_();
+  bool configure_gpio4_imu_input_();
   bool configure_usb_irq_masks_();
+  bool configure_frontlight_pwm_hw_();
   bool set_single_reset_disable_(bool disable);
   optional<bool> get_single_reset_disabled_();
   void process_irq_();
@@ -53,6 +64,8 @@ class M5PM1Component : public Component, public i2c::I2CDevice {
   sensor::Sensor *battery_voltage_sensor_{nullptr};
   sensor::Sensor *battery_level_sensor_{nullptr};
   binary_sensor::BinarySensor *external_power_binary_sensor_{nullptr};
+  std::function<void()> motion_handler_;
+  bool frontlight_hw_ready_{false};
 };
 
 }  // namespace esphome::m5pm1

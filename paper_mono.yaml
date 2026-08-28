@@ -7,6 +7,8 @@ packages:
   core: !include packages/core.yaml
   connectivity: !include packages/connectivity.yaml
   hardware: !include packages/hardware.yaml
+  battery: !include packages/battery.yaml
+  status_led: !include packages/status_led.yaml
   home_assistant_entities: !include config/home_assistant.yaml
   home_assistant_runtime: !include packages/home_assistant.yaml
   ui: !include packages/ui.yaml

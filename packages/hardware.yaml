@@ -9,12 +9,10 @@ psram:
   speed: 80MHz
 
 external_components:
-  - source: github://m5stack/esphome-yaml/components@main
-    components: [m5ioe1]
   - source:
       type: local
       path: components
-    components: [papermono_epaper, m5pm1]
+    components: [papermono_epaper, m5pm1, m5ioe1]
 
 i2c:
   id: bus_main
@@ -25,30 +23,6 @@ i2c:
 m5ioe1:
   id: m5ioe1_hub
   address: 0x4F
-
-# M5PM1 PMIC (0x6E): battery voltage via VBAT ADC and USB/5V presence via PWR_SRC.
-m5pm1:
-  id: m5pm1_pmu
-  i2c_id: bus_main
-  address: 0x6E
-  update_interval: 45s
-
-sensor:
-  - platform: m5pm1
-    m5pm1_id: m5pm1_pmu
-    battery_voltage:
-      name: "Paper Mono Battery Voltage"
-      id: paper_mono_battery_voltage
-    battery_level:
-      name: "Paper Mono Battery Level"
-      id: paper_mono_battery_level
-
-binary_sensor:
-  - platform: m5pm1
-    m5pm1_id: m5pm1_pmu
-    external_power:
-      name: "Paper Mono External Power"
-      id: paper_mono_external_power
 
 # EPD and touch rails must be enabled before the display/touch drivers initialize.
 # epaper_spi enable_pin is declared in YAML schema but not wired in C++ (ESPHome 2026.6.5).

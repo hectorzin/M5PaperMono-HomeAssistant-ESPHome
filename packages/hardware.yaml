@@ -88,14 +88,25 @@ touchscreen:
             id(controls_view) = true;
             id(selected_control) = -1;
             ESP_LOGI("control", "screensaver -> controls");
-            id(epaper_display).update_partial(0, 0, 480, 800);
+            id(epaper_display).set_full_update_every(15);
+            if (id(epaper_display).get_partial_count() >= 8) {
+              id(epaper_display).update();
+            } else {
+              id(epaper_display).update_partial(0, 0, 480, 800);
+            }
             return;
           }
           if (y >= 660) {
             id(controls_view) = false;
             id(selected_control) = -1;
             ESP_LOGI("control", "controls -> screensaver");
-            id(epaper_display).update_partial(0, 0, 480, 800);
+            if (id(epaper_display).get_partial_count() >= 10) {
+              id(epaper_display).set_full_update_every(10);
+              id(epaper_display).update();
+            } else {
+              id(epaper_display).set_full_update_every(10);
+              id(epaper_display).update_partial(0, 0, 480, 800);
+            }
             return;
           }
 

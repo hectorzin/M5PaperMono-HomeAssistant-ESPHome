@@ -14,3 +14,13 @@ wifi:
 time:
   - platform: homeassistant
     id: ha_time
+    on_time:
+      - seconds: 0
+        minutes: /5
+        then:
+          - if:
+              condition:
+                lambda: 'return !id(controls_view) && id(ha_connection_state) != 0;'
+              then:
+                - lambda: |-
+                    id(epaper_display).update_partial(0, 0, 480, 800);

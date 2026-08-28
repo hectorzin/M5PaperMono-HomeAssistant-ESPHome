@@ -164,6 +164,10 @@ void PaperMonoEpaper::update_partial(int x, int y, int width, int height) {
 
 void PaperMonoEpaper::update_partial() { this->request_refresh_(false); }
 
+bool PaperMonoEpaper::is_idle() const { return this->state_ == State::IDLE; }
+
+bool PaperMonoEpaper::has_baseline() const { return this->baseline_ready_; }
+
 void PaperMonoEpaper::request_refresh_(bool full) {
   if (!this->baseline_ready_) {
     if (!full)

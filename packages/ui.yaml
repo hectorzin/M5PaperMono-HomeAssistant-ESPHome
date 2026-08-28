@@ -12,6 +12,12 @@ font:
     id: font_title
     size: 48
   - file: "fonts/DejaVuSans.ttf"
+    id: font_connecting
+    size: 32
+  - file: "fonts/DejaVuSans.ttf"
+    id: font_connecting_state
+    size: 24
+  - file: "fonts/DejaVuSans.ttf"
     id: font_subtitle
     size: 28
   - file: "fonts/DejaVuSans.ttf"
@@ -54,7 +60,7 @@ image:
     transparency: alpha_channel
   - file: mdi:home-assistant
     id: home_assistant_icon
-    resize: 64x64
+    resize: 160x160
     type: grayscale
     transparency: alpha_channel
   - file: mdi:solar-power
@@ -137,15 +143,6 @@ globals:
     restore_value: no
     initial_value: '-1'
 
-interval:
-  - interval: 5min
-    then:
-      - if:
-          condition:
-            lambda: 'return !id(controls_view) && id(ha_connection_state) != 0;'
-          then:
-            - component.update: epaper_display
-
 # The complete display entry remains here because ESPHome merges display lists,
 # not individual display objects; splitting it would be fragile.
 display:
@@ -180,13 +177,12 @@ display:
 
       if (!id(controls_view)) {
         if (id(ha_connection_state) == 0) {
-          it.image(240, 235, id(home_assistant_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
-          it.printf(240, 350, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "CONECTANDO A");
-          it.printf(240, 410, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "HOME ASSISTANT...");
+          it.image(240, 200, id(home_assistant_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+          it.printf(240, 370, id(font_connecting), Color::BLACK, TextAlign::TOP_CENTER, "CONECTANDO");
           if (id(wifi_connected_state))
-            it.printf(240, 520, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "Wi-Fi conectado");
+            it.printf(240, 435, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "Home Assistant...");
           else
-            it.printf(240, 520, id(font_body), Color::BLACK, TextAlign::TOP_CENTER, "Conectando a Wi-Fi...");
+            it.printf(240, 435, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "Wi-Fi...");
         } else {
         // DEMO is strictly a global fallback after the API has been absent for
         // 60 seconds. While HA is available, invalid individual fields are
@@ -292,7 +288,8 @@ display:
         // Header: the HA time source is intentionally the sole source of truth.
         const auto now = id(ha_time).now();
         if (now.is_valid()) {
-          it.strftime(28, 20, id(font_time), Color::BLACK, "%H:%M", now);
+          const int displayed_minute = (now.minute / 5) * 5;
+          it.printf(28, 20, id(font_time), Color::BLACK, "%02d:%02d", now.hour, displayed_minute);
           // ESPHome reports Sunday as 1 through Saturday as 7. Convert to a
           // zero-based Spanish lookup so the device locale is irrelevant.
           static const char *const WEEKDAYS[] = {"DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"};

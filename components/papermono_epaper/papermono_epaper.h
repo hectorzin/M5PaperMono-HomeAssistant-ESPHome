@@ -43,6 +43,9 @@ class PaperMonoEpaper
     this->update_effective_transform_();
   }
   void set_full_update_every(uint8_t every) { this->full_update_every_ = every == 0 ? 1 : every; }
+  uint8_t get_partial_count() const { return this->partial_count_; }
+  bool is_idle() const;
+  bool has_baseline() const;
   void set_rotation(display::DisplayRotation rotation) override {
     display::Display::set_rotation(rotation);
     this->update_effective_transform_();

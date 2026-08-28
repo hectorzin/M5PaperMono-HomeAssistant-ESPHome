@@ -111,6 +111,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: wifi_transition_pending
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
 # Do not refresh the e-paper when a value arrives. This only governs whether
 # the renderer uses cached HA states or the per-field DEMO defaults.
@@ -124,10 +128,17 @@ interval:
             - lambda: |-
                 if (!id(wifi_connected_state)) {
                   id(wifi_connected_state) = true;
+                  if (id(ha_connection_state) == 0)
+                    id(wifi_transition_pending) = true;
+                }
+                if (id(wifi_transition_pending) && id(ha_connection_state) == 0 &&
+                    id(epaper_display).is_idle() && id(epaper_display).has_baseline()) {
+                  id(epaper_display).update_partial(0, 0, 480, 800);
+                  id(wifi_transition_pending) = false;
                 }
           else:
             - lambda: |-
-                if (id(wifi_connected_state)) {
+                if (id(wifi_connected_state) && id(ha_connection_state) != 0) {
                   id(wifi_connected_state) = false;
                 }
       - if:
@@ -142,10 +153,11 @@ interval:
                   else if ((uint32_t) (millis() - id(ha_connecting_since_ms)) >= 1500U) {
                     id(ha_ever_connected) = true;
                     id(ha_using_demo) = false;
+                    id(wifi_transition_pending) = false;
                     id(ha_connection_state) = 1;
                     id(ha_connecting_since_ms) = 0;
                     if (!id(controls_view))
-                      id(epaper_display).update_partial(0, 0, 480, 800);
+                      id(epaper_display).update();
                 }
                 }
                 else {
@@ -159,7 +171,8 @@ interval:
                     : millis() > 60000U;
                 if (timeout && id(ha_connection_state) != 2) {
                   id(ha_using_demo) = true;
+                  id(wifi_transition_pending) = false;
                   id(ha_connection_state) = 2;
                   if (!id(controls_view))
-                    id(epaper_display).update_partial(0, 0, 480, 800);
+                    id(epaper_display).update();
                 }

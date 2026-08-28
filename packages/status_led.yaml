@@ -1,0 +1,126 @@
+# PaperMono status LED: red=M5PM1 PM_LED, green=M5IOE1 GPIO8 (index 7, RMW-safe local m5ioe1).
+switch:
+  - platform: gpio
+    id: status_led_green
+    internal: true
+    restore_mode: ALWAYS_OFF
+    pin:
+      m5ioe1_id: m5ioe1_hub
+      number: 7
+      mode:
+        output: true
+
+globals:
+  - id: status_led_mode
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: status_led_logged_mode
+    type: int
+    restore_value: no
+    initial_value: '-1'
+  - id: status_led_blink_on
+    type: bool
+    restore_value: no
+    initial_value: 'true'
+  - id: status_led_blink_phase_ms
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: status_led_red_hw_on
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: status_led_green_hw_on
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+script:
+  - id: status_led_update
+    mode: queued
+    then:
+      - lambda: |-
+          static const char *const MODE_NAMES[] = {
+              "OFF", "LOW_BATTERY", "EXTERNAL_POWER", "EXTERNAL_POWER_FULL"};
+
+          const bool external_power = id(paper_mono_external_power).has_state() &&
+                                      id(paper_mono_external_power).state;
+          const bool display_level_valid =
+              !std::isnan(id(paper_mono_battery_display_level)) &&
+              id(paper_mono_battery_display_level) >= 0.0f &&
+              id(paper_mono_battery_display_level) <= 100.0f;
+          const int display_level =
+              display_level_valid ? static_cast<int>(id(paper_mono_battery_display_level)) : -1;
+
+          int desired_mode = 0;
+          if (external_power) {
+            desired_mode = (display_level_valid && display_level >= 100) ? 3 : 2;
+          } else if (display_level_valid && display_level <= 15) {
+            desired_mode = 1;
+          }
+
+          if (desired_mode != id(status_led_mode)) {
+            id(status_led_mode) = desired_mode;
+            id(status_led_blink_on) = true;
+            id(status_led_blink_phase_ms) = static_cast<int>(millis());
+          }
+
+          if (desired_mode != id(status_led_logged_mode)) {
+            ESP_LOGI("status_led", "Status LED: %s", MODE_NAMES[desired_mode]);
+            ESP_LOGI("status_led", "Red LED -> M5PM1 PWR_CFG[4] (reg 0x06 bit4 LED_EN)");
+            id(status_led_logged_mode) = desired_mode;
+          }
+
+          bool red_on = false;
+          bool green_on = false;
+
+          switch (id(status_led_mode)) {
+            case 1: {
+              const uint32_t elapsed =
+                  static_cast<uint32_t>(millis()) -
+                  static_cast<uint32_t>(id(status_led_blink_phase_ms));
+              if (id(status_led_blink_on)) {
+                red_on = true;
+                if (elapsed >= 500) {
+                  id(status_led_blink_on) = false;
+                  id(status_led_blink_phase_ms) = static_cast<int>(millis());
+                }
+              } else if (elapsed >= 2000) {
+                id(status_led_blink_on) = true;
+                id(status_led_blink_phase_ms) = static_cast<int>(millis());
+              }
+              break;
+            }
+            case 2:
+              red_on = true;
+              break;
+            case 3:
+              green_on = true;
+              break;
+            default:
+              break;
+          }
+
+          if (red_on != id(status_led_red_hw_on)) {
+            id(m5pm1_pmu).set_status_red_led(red_on);
+            id(status_led_red_hw_on) = red_on;
+          }
+          if (green_on != id(status_led_green_hw_on)) {
+            if (green_on) {
+              id(status_led_green).turn_on();
+            } else {
+              id(status_led_green).turn_off();
+            }
+            ESP_LOGI("status_led", "Status LED green: %s", green_on ? "ON" : "OFF");
+            id(status_led_green_hw_on) = green_on;
+          }
+
+interval:
+  - interval: 100ms
+    then:
+      - if:
+          condition:
+            lambda: 'return id(status_led_mode) == 1;'
+          then:
+            - script.execute: status_led_update

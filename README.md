@@ -21,6 +21,10 @@ La fuente `fonts/DejaVuSans.ttf` (licencia libre DejaVu) se incluye en el reposi
 
 La primera compilación ESPHome/ESP-IDF descarga varios GB de toolchain; requiere espacio libre en disco (recomendado ≥ 10 GB en la unidad de PlatformIO, por defecto `C:\.platformio`).
 
+## Estructura de configuracion
+
+`paper_mono.yaml` es el punto de entrada y enumera los paquetes que forman el firmware. Las entidades que debe adaptar cada usuario permanecen centralizadas en `config/home_assistant.yaml`. La configuracion funcional se organiza en `packages/` (nucleo, conectividad, hardware, Home Assistant y UI), mientras que `components/papermono_epaper/` conserva el driver e-paper especifico.
+
 ## Validar y compilar (sin flashear)
 
 ```bash

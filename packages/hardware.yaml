@@ -1,0 +1,136 @@
+esp32:
+  board: esp32-s3-devkitc1-n16r8
+  framework:
+    type: esp-idf
+  flash_size: 16MB
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+external_components:
+  - source: github://m5stack/esphome-yaml/components@main
+    components: [m5ioe1]
+  - source:
+      type: local
+      path: components
+    components: [papermono_epaper]
+
+i2c:
+  id: bus_main
+  sda: GPIO47
+  scl: GPIO48
+  frequency: 100kHz
+
+m5ioe1:
+  id: m5ioe1_hub
+  address: 0x4F
+
+# EPD and touch rails must be enabled before the display/touch drivers initialize.
+# epaper_spi enable_pin is declared in YAML schema but not wired in C++ (ESPHome 2026.6.5).
+switch:
+  - platform: gpio
+    id: epd_power
+    internal: true
+    restore_mode: ALWAYS_ON
+    pin:
+      m5ioe1_id: m5ioe1_hub
+      number: 2
+      mode:
+        output: true
+
+  - platform: gpio
+    id: touch_power
+    internal: true
+    restore_mode: ALWAYS_ON
+    pin:
+      m5ioe1_id: m5ioe1_hub
+      number: 12
+      mode:
+        output: true
+
+spi:
+  id: spi_epd
+  clk_pin: GPIO15
+  mosi_pin: GPIO14
+
+touchscreen:
+  - platform: ft63x6
+    id: touch_panel
+    i2c_id: bus_main
+    display: epaper_display
+    update_interval: 50ms
+    interrupt_pin:
+      number: GPIO4
+      mode:
+        input: true
+        pullup: true
+    reset_pin:
+      m5ioe1_id: m5ioe1_hub
+      number: 5
+      mode:
+        output: true
+    calibration:
+      x_min: 5
+      x_max: 475
+      y_min: 5
+      y_max: 795
+    on_touch:
+      - lambda: |-
+          const int x = touch.x;
+          const int y = touch.y;
+          static const int CARD_X[] = {28, 247, 28, 247};
+          static const int CARD_Y[] = {135, 135, 375, 375};
+          const int CARD_W = 205;
+          const int CARD_H = 210;
+
+          if (!id(controls_view)) {
+            id(controls_view) = true;
+            id(selected_control) = -1;
+            ESP_LOGI("control", "screensaver -> controls");
+            id(epaper_display).update_partial(0, 0, 480, 800);
+            return;
+          }
+          if (y >= 660) {
+            id(controls_view) = false;
+            id(selected_control) = -1;
+            ESP_LOGI("control", "controls -> screensaver");
+            id(epaper_display).update_partial(0, 0, 480, 800);
+            return;
+          }
+
+          int pressed = -1;
+          if (x >= 28 && x < 233 && y >= 135 && y < 345) {
+            pressed = 0;
+            ESP_LOGI("control", "pressed Climate");
+          } else if (x >= 247 && x < 452 && y >= 135 && y < 345) {
+            pressed = 1;
+            ESP_LOGI("control", "pressed Lights");
+          } else if (x >= 28 && x < 233 && y >= 375 && y < 585) {
+            pressed = 2;
+            ESP_LOGI("control", "pressed Blinds");
+          } else if (x >= 247 && x < 452 && y >= 375 && y < 585) {
+            pressed = 3;
+            ESP_LOGI("control", "pressed Robot");
+          }
+          if (pressed < 0)
+            return;
+
+          const int previous = id(selected_control);
+          if (pressed == previous)
+            return;
+
+          id(selected_control) = pressed;
+          if (previous >= 0) {
+            id(epaper_display).add_partial_region(CARD_X[previous], CARD_Y[previous], CARD_W, CARD_H);
+          } else {
+            id(epaper_display).add_partial_region(28, 750, 250, 50);
+          }
+          id(epaper_display).add_partial_region(CARD_X[pressed], CARD_Y[pressed], CARD_W, CARD_H);
+          id(epaper_display).update_partial();
+      - logger.log:
+          format: "Touch down x=%d y=%d raw_x=%d raw_y=%d id=%d"
+          args: [touch.x, touch.y, touch.x_raw, touch.y_raw, touch.id]
+    on_release:
+      - logger.log:
+          format: "Touch released"

@@ -1,0 +1,165 @@
+# Home Assistant values are cached locally. DEMO is strictly a global fallback
+# after the API has been absent for 60 seconds.
+text_sensor:
+  - platform: homeassistant
+    id: ha_weather_state
+    entity_id: ${ha_weather_entity}
+    internal: true
+
+sensor:
+  - platform: homeassistant
+    id: ha_indoor_temperature
+    entity_id: ${ha_indoor_temperature_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_indoor_humidity
+    entity_id: ${ha_indoor_humidity_entity}
+    internal: true
+
+  # These are documented standard weather attributes in Home Assistant. They
+  # are independently optional: a missing attribute simply has no state.
+  - platform: homeassistant
+    id: ha_weather_temperature
+    entity_id: ${ha_weather_entity}
+    attribute: temperature
+    internal: true
+  - platform: homeassistant
+    id: ha_weather_humidity
+    entity_id: ${ha_weather_entity}
+    attribute: humidity
+    internal: true
+  - platform: homeassistant
+    id: ha_weather_pressure
+    entity_id: ${ha_weather_entity}
+    attribute: pressure
+    internal: true
+  - platform: homeassistant
+    id: ha_weather_wind_speed
+    entity_id: ${ha_weather_entity}
+    attribute: wind_speed
+    internal: true
+
+  - platform: homeassistant
+    id: ha_outdoor_pm25
+    entity_id: ${ha_outdoor_pm25_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_indoor_co2
+    entity_id: ${ha_indoor_co2_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_indoor_pm25
+    entity_id: ${ha_indoor_pm25_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_indoor_voc
+    entity_id: ${ha_indoor_voc_entity}
+    internal: true
+
+  - platform: homeassistant
+    id: ha_solar_power
+    entity_id: ${ha_solar_power_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_house_power
+    entity_id: ${ha_house_power_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_grid_import
+    entity_id: ${ha_grid_import_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_grid_export
+    entity_id: ${ha_grid_export_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_battery_charge
+    entity_id: ${ha_battery_charge_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_battery_discharge
+    entity_id: ${ha_battery_discharge_entity}
+    internal: true
+  - platform: homeassistant
+    id: ha_battery_soc
+    entity_id: ${ha_battery_soc_entity}
+    internal: true
+
+globals:
+  - id: ha_ever_connected
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: ha_last_connected_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: ha_using_demo
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  # 0 = CONNECTING, 1 = REAL, 2 = DEMO.
+  - id: ha_connection_state
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: ha_connecting_since_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: wifi_connected_state
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+# Do not refresh the e-paper when a value arrives. This only governs whether
+# the renderer uses cached HA states or the per-field DEMO defaults.
+interval:
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            wifi.connected:
+          then:
+            - lambda: |-
+                if (!id(wifi_connected_state)) {
+                  id(wifi_connected_state) = true;
+                }
+          else:
+            - lambda: |-
+                if (id(wifi_connected_state)) {
+                  id(wifi_connected_state) = false;
+                }
+      - if:
+          condition:
+            api.connected:
+          then:
+            - lambda: |-
+                id(ha_last_connected_ms) = millis();
+                if (id(ha_connection_state) != 1) {
+                  if (id(ha_connecting_since_ms) == 0)
+                    id(ha_connecting_since_ms) = millis();
+                  else if ((uint32_t) (millis() - id(ha_connecting_since_ms)) >= 1500U) {
+                    id(ha_ever_connected) = true;
+                    id(ha_using_demo) = false;
+                    id(ha_connection_state) = 1;
+                    id(ha_connecting_since_ms) = 0;
+                    if (!id(controls_view))
+                      id(epaper_display).update_partial(0, 0, 480, 800);
+                }
+                }
+                else {
+                  id(ha_ever_connected) = true;
+                }
+          else:
+            - lambda: |-
+                id(ha_connecting_since_ms) = 0;
+                const bool timeout = id(ha_ever_connected)
+                    ? (uint32_t) (millis() - id(ha_last_connected_ms)) > 60000U
+                    : millis() > 60000U;
+                if (timeout && id(ha_connection_state) != 2) {
+                  id(ha_using_demo) = true;
+                  id(ha_connection_state) = 2;
+                  if (!id(controls_view))
+                    id(epaper_display).update_partial(0, 0, 480, 800);
+                }

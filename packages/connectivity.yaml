@@ -1,0 +1,16 @@
+# Native ESPHome API. The api.connected condition in the Home Assistant runtime
+# package is the authoritative connection signal.
+api:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "${device_name}-setup"
+    password: !secret wifi_password
+
+# HA is the clock authority. It receives timezone and time through the native
+# API; unlike the previous literal, it has no synthetic fallback.
+time:
+  - platform: homeassistant
+    id: ha_time

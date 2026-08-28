@@ -1,0 +1,13 @@
+esphome:
+  name: ${device_name}
+  friendly_name: M5Stack PaperMono C153
+  on_boot:
+    - priority: 200
+      then:
+        - component.update: epaper_display
+
+logger:
+  level: DEBUG
+
+ota:
+  - platform: esphome

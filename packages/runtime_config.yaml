@@ -7,12 +7,13 @@ esphome:
         - lambda: |-
             id(paper_mono_frontlight_brightness).publish_state(id(frontlight_default_brightness));
             id(paper_mono_frontlight_timeout).publish_state(id(frontlight_timeout_seconds));
+            id(paper_mono_sleep_timeout).publish_state(id(sleep_timeout_seconds));
             id(paper_mono_refresh_interval).publish_state(str_sprintf("%d", id(screensaver_refresh_minutes)));
             id(paper_mono_quiet_hours_start).publish_state(id(quiet_hours_start));
             id(paper_mono_quiet_hours_end).publish_state(id(quiet_hours_end));
-            ESP_LOGI("runtime_config", "Runtime config sync: brightness=%d%% timeout=%us quiet_start=%s quiet_end=%s refresh=%dmin",
-                     id(frontlight_default_brightness), id(frontlight_timeout_seconds), id(quiet_hours_start).c_str(),
-                     id(quiet_hours_end).c_str(), id(screensaver_refresh_minutes));
+            ESP_LOGI("runtime_config", "Runtime config sync: brightness=%d%% frontlight_timeout=%us sleep_timeout=%us quiet_start=%s quiet_end=%s refresh=%dmin",
+                     id(frontlight_default_brightness), id(frontlight_timeout_seconds), id(sleep_timeout_seconds),
+                     id(quiet_hours_start).c_str(), id(quiet_hours_end).c_str(), id(screensaver_refresh_minutes));
 
 globals:
   - id: frontlight_default_brightness
@@ -23,6 +24,10 @@ globals:
     type: uint32_t
     restore_value: yes
     initial_value: '${frontlight_timeout_seconds}'
+  - id: sleep_timeout_seconds
+    type: uint32_t
+    restore_value: yes
+    initial_value: '${sleep_timeout_seconds}'
   - id: screensaver_refresh_minutes
     type: int
     restore_value: yes
@@ -68,6 +73,23 @@ number:
           id(frontlight_timeout_seconds) = (uint32_t) x;
           ESP_LOGI("runtime_config", "Runtime config HA change: parameter=frontlight_timeout old=%u new=%u stored=%u",
                    (unsigned) old_value, (unsigned) x, (unsigned) id(frontlight_timeout_seconds));
+
+  - platform: template
+    name: Paper Mono Sleep Timeout
+    id: paper_mono_sleep_timeout
+    min_value: 10
+    max_value: 3600
+    step: 10
+    unit_of_measurement: s
+    mode: box
+    optimistic: true
+    initial_value: '${sleep_timeout_seconds}'
+    set_action:
+      - lambda: |-
+          const uint32_t old_value = id(sleep_timeout_seconds);
+          id(sleep_timeout_seconds) = (uint32_t) x;
+          ESP_LOGI("runtime_config", "Runtime config HA change: parameter=sleep_timeout old=%u new=%u stored=%u",
+                   (unsigned) old_value, (unsigned) x, (unsigned) id(sleep_timeout_seconds));
 
 text:
   - platform: template
@@ -126,14 +148,17 @@ button:
       - lambda: |-
           id(frontlight_default_brightness) = ${frontlight_default_brightness};
           id(frontlight_timeout_seconds) = ${frontlight_timeout_seconds};
+          id(sleep_timeout_seconds) = ${sleep_timeout_seconds};
           id(screensaver_refresh_minutes) = ${screensaver_refresh_minutes};
           id(quiet_hours_start) = "${quiet_hours_start}";
           id(quiet_hours_end) = "${quiet_hours_end}";
           id(paper_mono_frontlight_brightness).publish_state(id(frontlight_default_brightness));
           id(paper_mono_frontlight_timeout).publish_state(id(frontlight_timeout_seconds));
+          id(paper_mono_sleep_timeout).publish_state(id(sleep_timeout_seconds));
           id(paper_mono_refresh_interval).publish_state(str_sprintf("%d", id(screensaver_refresh_minutes)));
           id(paper_mono_quiet_hours_start).publish_state(id(quiet_hours_start));
           id(paper_mono_quiet_hours_end).publish_state(id(quiet_hours_end));
-          ESP_LOGI("runtime_config", "Runtime config: defaults restored brightness=%d%% timeout=%us quiet_start=%s quiet_end=%s refresh=%umin",
+          ESP_LOGI("runtime_config", "Runtime config: defaults restored brightness=%d%% frontlight_timeout=%us sleep_timeout=%us quiet_start=%s quiet_end=%s refresh=%umin",
                    id(frontlight_default_brightness), (unsigned) id(frontlight_timeout_seconds),
+                   (unsigned) id(sleep_timeout_seconds),
                    id(quiet_hours_start).c_str(), id(quiet_hours_end).c_str(), id(screensaver_refresh_minutes));

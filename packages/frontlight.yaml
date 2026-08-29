@@ -14,6 +14,7 @@ papermono_activity:
   battery_display_level: paper_mono_battery_display_level
   frontlight_default_brightness: frontlight_default_brightness
   frontlight_timeout_seconds: frontlight_timeout_seconds
+  sleep_timeout_seconds: sleep_timeout_seconds
   screensaver_refresh_minutes: screensaver_refresh_minutes
   quiet_hours_start: quiet_hours_start
   quiet_hours_end: quiet_hours_end

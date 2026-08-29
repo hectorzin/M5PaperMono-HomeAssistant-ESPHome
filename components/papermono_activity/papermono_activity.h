@@ -95,6 +95,9 @@ class PaperMonoActivityComponent : public Component {
   void set_frontlight_timeout_seconds(globals::RestoringGlobalsComponent<uint32_t> *value) {
     this->frontlight_timeout_seconds_ = value;
   }
+  void set_sleep_timeout_seconds(globals::RestoringGlobalsComponent<uint32_t> *value) {
+    this->sleep_timeout_seconds_ = value;
+  }
   void set_screensaver_refresh_minutes(globals::RestoringGlobalsComponent<int> *value) {
     this->screensaver_refresh_minutes_global_ = value;
   }
@@ -114,10 +117,11 @@ class PaperMonoActivityComponent : public Component {
 
   void begin_pmic_wake_hardware_recovery(m5ioe1::M5IOE1Component *ioe);
 
-  // Clock-aligned screensaver tick: battery refresh + PARTIAL, then arm light sleep when idle.
+  // Clock-aligned timer handling for quiet-hours and periodic light-sleep wakes.
   void on_screensaver_tick();
 
  protected:
+  void exit_controls_(bool preserve_sleep_pending);
   void apply_frontlight_(bool on, ActivitySource source);
   void turn_off_timeout_();
   void on_pickup_transition_();
@@ -150,11 +154,15 @@ class PaperMonoActivityComponent : public Component {
   void complete_pmic_wake_hardware_recovery();
   void begin_pmic_ha_final_full_recovery_();
   bool begin_quiet_hours_shutdown_();
-  void request_quiet_hours_shutdown_refresh_();
+  void request_quiet_hours_shutdown_refresh_(const char *source);
   void cancel_shutdown_();
   uint32_t timeout_ms_() const {
     const uint32_t seconds = this->frontlight_timeout_seconds_ != nullptr ? this->frontlight_timeout_seconds_->value() : 30U;
     return seconds == 0 ? 30000U : seconds * 1000U;
+  }
+  uint32_t sleep_timeout_ms_() const {
+    const uint32_t seconds = this->sleep_timeout_seconds_ != nullptr ? this->sleep_timeout_seconds_->value() : 60U;
+    return seconds == 0 ? 60000U : seconds * 1000U;
   }
   uint8_t on_brightness_percent_() const {
     return this->frontlight_default_brightness_ != nullptr
@@ -189,6 +197,7 @@ class PaperMonoActivityComponent : public Component {
   time::RealTimeClock *time_{nullptr};
   globals::RestoringGlobalsComponent<int> *frontlight_default_brightness_{nullptr};
   globals::RestoringGlobalsComponent<uint32_t> *frontlight_timeout_seconds_{nullptr};
+  globals::RestoringGlobalsComponent<uint32_t> *sleep_timeout_seconds_{nullptr};
   globals::RestoringGlobalsComponent<int> *screensaver_refresh_minutes_global_{nullptr};
   globals::RestoringGlobalStringComponent<std::string, 64> *quiet_hours_start_{nullptr};
   globals::RestoringGlobalStringComponent<std::string, 64> *quiet_hours_end_{nullptr};
@@ -205,6 +214,7 @@ class PaperMonoActivityComponent : public Component {
   bool frontlight_on_{false};
   bool pickup_cleanup_pending_{false};
   bool light_sleep_pending_{false};
+  bool sleep_timeout_logged_{false};
   bool periodic_wake_recovery_timeout_logged_{false};
   bool pending_pmic_motion_activity_{false};
   PmicHwRecoveryPhase pmic_hw_recovery_phase_{PmicHwRecoveryPhase::NONE};

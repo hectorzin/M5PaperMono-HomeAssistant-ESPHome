@@ -66,11 +66,11 @@ actividad explícita:
 - movimiento detectado por el BMI270;
 - interacción táctil.
 
-Permanece encendido mientras continúe la actividad y se apaga después de 30
-segundos sin actividad. Un nuevo movimiento lo enciende inmediatamente. El
-movimiento llega por la ruta `BMI270 INT1 -> M5PM1 GPIO4 -> ESP32 GPIO1`
-durante el funcionamiento normal. El 30% es un nivel fijo; no es un brillo
-automático.
+Permanece encendido mientras continúe la actividad y se apaga después del
+**Frontlight Timeout** (30 segundos por defecto) sin nueva actividad. Un nuevo
+movimiento lo enciende inmediatamente. El movimiento llega por la ruta
+`BMI270 INT1 -> M5PM1 GPIO4 -> ESP32 GPIO1` durante el funcionamiento normal.
+El brillo por defecto es configurable; no es un brillo automático.
 
 ### Refresco de la e-paper
 
@@ -86,16 +86,25 @@ un FULL automático periódico por ese contador.
 
 ### Funcionamiento normal durante el día
 
-Mientras el usuario interactúa, el ESP32 permanece despierto. Después de 30
-segundos sin actividad se apaga el frontlight, pero todavía no entra
-inmediatamente en light sleep. En el siguiente tick alineado del scheduler
-(`screensaver_refresh_minutes`, 5 minutos por defecto), el firmware:
+Mientras el usuario interactúa, el ESP32 permanece despierto. Tras el
+**Frontlight Timeout** se apaga el frontlight, pero el dispositivo sigue
+despierto con Wi-Fi y API activos. Cuando vence el **Sleep Timeout** (60
+segundos por defecto) sin nueva actividad desde el último touch o movimiento,
+el firmware:
 
-1. actualiza la batería y los datos necesarios;
-2. realiza el PARTIAL correspondiente;
-3. espera a que el EPD quede idle;
-4. apaga Wi-Fi;
-5. entra en **ESP32 light sleep**.
+1. sale de la vista de controles si estaba activa;
+2. espera a que el EPD quede idle tras cualquier PARTIAL pendiente;
+3. apaga Wi-Fi;
+4. entra en **ESP32 light sleep**.
+
+Ambos plazos se miden de forma independiente desde la misma última actividad:
+apagar el frontlight no reinicia el Sleep Timeout.
+
+El **Refresh Interval** (`screensaver_refresh_minutes`, 5 minutos por defecto)
+no determina cuándo entra el dispositivo en light sleep. Solo programa los
+despertares periódicos **una vez ya dormido**: al vencer el temporizador, el
+firmware se despierta, actualiza la pantalla y vuelve a light sleep si no hay
+actividad.
 
 Durante el light sleep puede producirse un **wake** por el temporizador del
 siguiente tick absoluto alineado o por movimiento del BMI270.
@@ -106,10 +115,15 @@ a light sleep si no ha habido actividad. Después de un wake por movimiento, el
 dispositivo vuelve inmediatamente al funcionamiento activo, enciende el
 frontlight y aplica la política normal de pickup/refresco.
 
+Un nuevo touch o movimiento cancela un sleep pendiente y reinicia ambos plazos
+de inactividad.
+
 Si el ESP32 está despierto cuando llega `quiet_hours_start`, el inicio exacto
 puede depender del scheduler: la transición puede producirse en el siguiente
 tick alineado. Mientras ya está en light sleep, el temporizador sí puede
-programarse para tener en cuenta `quiet_hours_start`.
+programarse para tener en cuenta `quiet_hours_start`. Si el Sleep Timeout vence
+durante quiet hours, no se usa light sleep: se aplica la ruta de **M5PM1
+shutdown** con pantalla `ZZZ` y luna.
 
 ### Quiet hours: M5PM1 shutdown
 
@@ -188,9 +202,9 @@ físico antes del FULL obligatorio.
 Si el usuario levanta el dispositivo o pulsa POWER durante quiet hours, arranca
 normalmente con la UI normal (no `ZZZ`) y el frontlight activo por la
 interacción. Puede utilizarse con normalidad. Cuando vuelve a quedar inactivo,
-el frontlight se apaga tras 30 segundos y, en el siguiente tick correspondiente,
-se muestra `ZZZ`, se rearma el RTC y se vuelve a M5PM1 shutdown mientras siga
-dentro de quiet hours.
+el frontlight se apaga tras el Frontlight Timeout y, al vencer el Sleep Timeout
+sin nueva actividad, se muestra `ZZZ`, se rearma el RTC y se vuelve a M5PM1
+shutdown mientras siga dentro de quiet hours.
 
 ### Estados de energía
 
@@ -205,21 +219,34 @@ dentro de quiet hours.
 Estas son las substitutions disponibles en `paper_mono.yaml`:
 
 ```yaml
+frontlight_timeout_seconds: "30"
+sleep_timeout_seconds: "60"
 screensaver_refresh_minutes: "5"
 quiet_hours_start: "00:00"
 quiet_hours_end: "08:00"
 ```
 
-- `screensaver_refresh_minutes` define el intervalo de los ticks de refresco y
-  de wake durante el día. Debe dividir 60 minutos uniformemente, por ejemplo
-  `5`, `10`, `15` o `30`.
-- `quiet_hours_start` define el comienzo de la ventana nocturna en formato
-  `HH:MM`.
+Tres plazos distintos gobiernan el ahorro de energía diurno:
+
+| Plazo | Entidad HA | Default | Función |
+|---|---|---|---|
+| **Frontlight Timeout** | `Paper Mono Frontlight Timeout` | 30 s | Apaga el frontlight tras inactividad. El ESP32 sigue despierto. |
+| **Sleep Timeout** | `Paper Mono Sleep Timeout` | 60 s | Tras inactividad, entra en light sleep (o M5PM1 shutdown si ya es quiet hours). Rango 10–3600 s, step 10. |
+| **Refresh Interval** | `Paper Mono Refresh Interval` | 5 min | Intervalo de los wakes periódicos **durante** light sleep. No retrasa la entrada inicial en sleep. |
+
+Los dos timeouts se miden de forma independiente desde la misma última
+actividad (touch o movimiento). Apagar el frontlight no reinicia el Sleep
+Timeout.
+
+- `screensaver_refresh_minutes` debe dividir 60 minutos uniformemente, por
+  ejemplo `5`, `10`, `15` o `30`.
+- `quiet_hours_start` y `quiet_hours_end` definen la ventana nocturna en
+  formato `HH:MM`.
 
 Durante el funcionamiento, estos valores se pueden editar desde Home Assistant
-con las entidades de configuración del dispositivo. Se restauran mediante NVS
-(`globals` persistentes de ESPHome); por tanto, los valores de este YAML solo
-son defaults iniciales. `Paper Mono Restore Defaults` reaplica todos los
-defaults compilados.
-- `quiet_hours_end` define cuándo el RTC debe hacer el power-on al terminar la
-  ventana nocturna, también en formato `HH:MM`.
+con las entidades de configuración del dispositivo (`Paper Mono Frontlight
+Brightness`, `Paper Mono Frontlight Timeout`, `Paper Mono Sleep Timeout`,
+`Paper Mono Refresh Interval`, quiet hours y `Paper Mono Restore Defaults`).
+Se restauran mediante NVS (`globals` persistentes de ESPHome); por tanto, los
+valores de este YAML solo son defaults iniciales. `Paper Mono Restore Defaults`
+reaplica todos los defaults compilados.

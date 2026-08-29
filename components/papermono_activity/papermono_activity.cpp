@@ -84,6 +84,7 @@ void PaperMonoActivityComponent::setup() {
   this->last_periodic_bucket_ = UINT32_MAX;
   this->last_gpio_block_log_ms_ = 0;
   this->periodic_wake_recovery_timeout_logged_ = false;
+  this->sleep_timeout_logged_ = false;
   this->light_sleep_timer_reason_ = LightSleepTimerReason::NORMAL_REFRESH;
 
   ESP_LOGI(TAG, "Activity setup: pmic_shutdown=%s", this->pmu_->is_boot_from_pmic_shutdown() ? "yes" : "no");
@@ -101,9 +102,10 @@ void PaperMonoActivityComponent::setup() {
   this->handle_boot_wake_source_();
   this->request_screensaver_refresh_policy_();
   ESP_LOGI(TAG, "Frontlight init: OFF (boot default)");
-  ESP_LOGI(TAG, "Runtime config: frontlight_brightness=%u%% frontlight_timeout=%us quiet_start=%s quiet_end=%s refresh_interval=%umin",
-           this->on_brightness_percent_(), this->timeout_ms_() / 1000U, this->quiet_hours_start_value_().c_str(),
-           this->quiet_hours_end_value_().c_str(), this->screensaver_refresh_minutes_());
+  ESP_LOGI(TAG, "Runtime config: frontlight_brightness=%u%% frontlight_timeout=%us sleep_timeout=%us quiet_start=%s quiet_end=%s refresh_interval=%umin",
+           this->on_brightness_percent_(), this->timeout_ms_() / 1000U, this->sleep_timeout_ms_() / 1000U,
+           this->quiet_hours_start_value_().c_str(), this->quiet_hours_end_value_().c_str(),
+           this->screensaver_refresh_minutes_());
 }
 
 void PaperMonoActivityComponent::loop() {
@@ -129,7 +131,35 @@ void PaperMonoActivityComponent::loop() {
     this->begin_pmic_ha_final_full_recovery_();
   } else if (this->light_sleep_wake_recovery_ != nullptr && this->light_sleep_wake_recovery_->value() &&
              this->is_network_api_ready_() && !this->pmic_ha_final_full_pending_) {
+    ESP_LOGI(TAG, "PMIC recovery: clearing light_sleep_wake_recovery (final HA FULL not pending)");
     this->light_sleep_wake_recovery_->value() = false;
+  }
+
+  // A periodic refresh may arm sleep, but it must not be the trigger for the
+  // initial transition.  Once the inactivity deadline expires, reuse the
+  // same pending/eligibility and entry path used by periodic refreshes.
+  if (!this->light_sleep_pending_ && this->last_activity_ms_ != 0 &&
+      this->periodic_wake_phase_ == PeriodicWakePhase::NONE) {
+    const uint32_t now = millis();
+    const uint32_t inactive_ms = now - this->last_activity_ms_;
+    const uint32_t configured_sleep_timeout_ms = this->sleep_timeout_ms_();
+    if (inactive_ms >= configured_sleep_timeout_ms) {
+      this->sleep_eligible_activity_ms_ = this->last_activity_ms_;
+      this->light_sleep_pending_ = true;
+      if (!this->sleep_timeout_logged_) {
+        ESP_LOGI(TAG, "Sleep timeout reached after %u s inactivity", configured_sleep_timeout_ms / 1000U);
+        this->sleep_timeout_logged_ = true;
+      }
+    }
+  }
+
+  if (this->light_sleep_pending_ && this->in_controls_view_() &&
+      this->last_activity_ms_ == this->sleep_eligible_activity_ms_) {
+    if (this->controls_view_ != nullptr) {
+      this->controls_view_->value() = false;
+    }
+    ESP_LOGI("control", "controls -> screensaver");
+    this->exit_controls_(true);
   }
 
   if (this->light_sleep_pending_ && this->can_enter_light_sleep_()) {
@@ -251,10 +281,14 @@ void PaperMonoActivityComponent::enter_controls() {
   this->display_->update_partial(0, 0, 480, 800);
 }
 
-void PaperMonoActivityComponent::exit_controls() {
-  this->cancel_light_sleep_();
-  this->cancel_shutdown_();
-  this->clear_wake_recovery_flag_();
+void PaperMonoActivityComponent::exit_controls() { this->exit_controls_(false); }
+
+void PaperMonoActivityComponent::exit_controls_(bool preserve_sleep_pending) {
+  if (!preserve_sleep_pending) {
+    this->cancel_light_sleep_();
+    this->cancel_shutdown_();
+    this->clear_wake_recovery_flag_();
+  }
 
   if (this->display_ == nullptr) {
     return;
@@ -446,10 +480,24 @@ void PaperMonoActivityComponent::handle_boot_wake_source_() {
   }
 
   this->pmu_->clear_wake_source(0xFF);
+
+  ESP_LOGI(TAG, "PMIC boot classification:");
+  ESP_LOGI(TAG, "  wake_source=%s", this->pmu_->get_boot_wake_source() == m5pm1::Pm5BootWakeSource::RTC_GPIO0
+                                      ? "RTC"
+                                      : this->pmu_->get_boot_wake_source() == m5pm1::Pm5BootWakeSource::MOTION_GPIO4
+                                            ? "MOTION"
+                                            : this->pmu_->get_boot_wake_source() == m5pm1::Pm5BootWakeSource::POWER_BUTTON
+                                                  ? "POWER_BUTTON"
+                                                  : this->pmu_->get_boot_wake_source() == m5pm1::Pm5BootWakeSource::NORMAL
+                                                        ? "NORMAL"
+                                                        : "UNKNOWN");
+  ESP_LOGI(TAG, "  shutdown_marker=%s", this->pmu_->is_boot_shutdown_pending() ? "yes" : "no");
+  ESP_LOGI(TAG, "  boot_from_pmic_shutdown=%s", this->pmu_->is_boot_from_pmic_shutdown() ? "yes" : "no");
 }
 
 void PaperMonoActivityComponent::begin_pmic_wake_hardware_recovery(m5ioe1::M5IOE1Component *ioe) {
   if (this->pmu_ == nullptr || !this->pmu_->is_boot_from_pmic_shutdown()) {
+    ESP_LOGI(TAG, "PMIC recovery state: skipped (boot_from_pmic_shutdown=no)");
     return;
   }
   if (this->pmic_hw_recovery_phase_ != PmicHwRecoveryPhase::NONE) {
@@ -459,6 +507,15 @@ void PaperMonoActivityComponent::begin_pmic_wake_hardware_recovery(m5ioe1::M5IOE
   if (this->light_sleep_wake_recovery_ != nullptr) {
     this->light_sleep_wake_recovery_->value() = true;
   }
+  ESP_LOGI(TAG, "PMIC recovery state:");
+  ESP_LOGI(TAG, "  periodic_wake_phase=%u", static_cast<unsigned>(this->periodic_wake_phase_));
+  ESP_LOGI(TAG, "  light_sleep_wake_recovery=%s",
+           this->light_sleep_wake_recovery_ != nullptr && this->light_sleep_wake_recovery_->value() ? "yes" : "no");
+  ESP_LOGI(TAG, "  pmic_ha_final_full_pending=%s", this->pmic_ha_final_full_pending_ ? "yes" : "no");
+  ESP_LOGI(TAG, "  ha_state=%d",
+           this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1);
+  ESP_LOGI(TAG, "  mandatory_full_done=%s",
+           this->display_ != nullptr && this->display_->is_pmic_mandatory_full_done() ? "yes" : "no");
   ESP_LOGI(TAG, "PMIC boot: waiting for HA state recovery");
   this->m5ioe1_ = ioe;
   this->pmic_hw_recovery_phase_ = PmicHwRecoveryPhase::WAIT_M5IOE1;
@@ -544,6 +601,9 @@ void PaperMonoActivityComponent::process_pmic_hw_recovery_() {
 
 void PaperMonoActivityComponent::begin_pmic_ha_final_full_recovery_() {
   if (!this->pmic_ha_final_full_pending_ || this->periodic_wake_phase_ != PeriodicWakePhase::NONE) {
+    ESP_LOGI(TAG, "PMIC boot: final HA FULL deferred (pending=%s periodic_wake_phase=%u)",
+             this->pmic_ha_final_full_pending_ ? "yes" : "no",
+             static_cast<unsigned>(this->periodic_wake_phase_));
     return;
   }
   this->periodic_wake_started_ms_ = millis();
@@ -583,7 +643,25 @@ void PaperMonoActivityComponent::sync_battery_display_for_shutdown_() {
   this->battery_display_level_->value() = rounded;
 }
 
-void PaperMonoActivityComponent::request_quiet_hours_shutdown_refresh_() {
+void PaperMonoActivityComponent::request_quiet_hours_shutdown_refresh_(const char *source) {
+  const bool quiet_sleep_display =
+      this->quiet_hours_sleep_display_ != nullptr && this->quiet_hours_sleep_display_->value();
+  const bool wake_recovery =
+      this->light_sleep_wake_recovery_ != nullptr && this->light_sleep_wake_recovery_->value();
+  ESP_LOGI(TAG, "Quiet shutdown context:");
+  ESP_LOGI(TAG, "  source=%s", source != nullptr ? source : "unknown");
+  ESP_LOGI(TAG, "  quiet_sleep_display=%s", quiet_sleep_display ? "yes" : "no");
+  ESP_LOGI(TAG, "  pmic_ha_final_full_pending=%s", this->pmic_ha_final_full_pending_ ? "yes" : "no");
+  ESP_LOGI(TAG, "  ha_state=%d",
+           this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1);
+  ESP_LOGI(TAG, "  light_sleep_wake_recovery=%s", wake_recovery ? "yes" : "no");
+  if (this->pmu_ != nullptr) {
+    ESP_LOGI(TAG, "  shutdown_pending_marker=%s", this->pmu_->is_boot_shutdown_pending() ? "yes" : "no");
+  }
+
+  this->cancel_light_sleep_();
+  this->disable_wifi_for_sleep_();
+
   if (this->quiet_hours_sleep_display_ != nullptr) {
     this->quiet_hours_sleep_display_->value() = true;
   }
@@ -784,7 +862,13 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
   }
 
   if (quiet_sleep_display) {
-    this->request_quiet_hours_shutdown_refresh_();
+    this->request_quiet_hours_shutdown_refresh_("scheduler");
+    return;
+  }
+
+  // Refresh Interval schedules timer wakes while already in light sleep. It
+  // must not make an awake device enter sleep before its inactivity deadline.
+  if (!this->light_sleep_pending_) {
     return;
   }
 
@@ -871,12 +955,13 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
 
   if (this->periodic_wake_phase_ == PeriodicWakePhase::WAIT_API) {
     if (this->pmic_ha_final_full_pending_) {
-      ESP_LOGI(TAG, "PMIC boot: HA API connected, settling state subscriptions");
+      ESP_LOGI(TAG, "PMIC boot: HA API ready, settling state subscriptions");
     } else {
       ESP_LOGI(TAG, "Periodic wake: API ready, settling HA states");
     }
     this->periodic_wake_settle_start_ms_ = millis();
     this->periodic_wake_phase_ = PeriodicWakePhase::SETTLE;
+    ESP_LOGI(TAG, "PMIC boot: HA settle start (%u ms)", HA_STATE_SETTLE_MS);
     return;
   }
 
@@ -896,7 +981,8 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
         this->ha_connection_state_->value() = 1;
       }
       if (this->display_ != nullptr) {
-        ESP_LOGI(TAG, "PMIC boot: final HA FULL requested");
+        ESP_LOGI(TAG, "PMIC boot: final HA FULL requested (ha_state=%d)",
+                 this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1);
         this->display_->update();
       }
       this->pmic_ha_final_full_pending_ = false;
@@ -1023,6 +1109,13 @@ void PaperMonoActivityComponent::enable_wifi_after_wake_(bool timer_wake) {
 }
 
 void PaperMonoActivityComponent::enter_light_sleep_() {
+  if (this->is_in_quiet_hours_()) {
+    ESP_LOGI(TAG, "Quiet hours active at sleep entry; routing to PMIC shutdown");
+    this->light_sleep_pending_ = false;
+    this->request_quiet_hours_shutdown_refresh_("sleep_timeout");
+    return;
+  }
+
   if (!this->pmu_->prepare_light_sleep_entry()) {
     const uint32_t now = millis();
     if (now - this->last_gpio_block_log_ms_ >= GPIO_BLOCK_LOG_INTERVAL_MS) {
@@ -1116,7 +1209,7 @@ void PaperMonoActivityComponent::handle_light_sleep_wake_(esp_sleep_wakeup_cause
       } else {
         ESP_LOGI(TAG, "Wake from light sleep: quiet_hours_start -> PMIC shutdown path");
       }
-      this->request_quiet_hours_shutdown_refresh_();
+      this->request_quiet_hours_shutdown_refresh_("light_sleep_timer");
       return;
     }
 
@@ -1160,6 +1253,7 @@ void PaperMonoActivityComponent::report_activity(ActivitySource source) {
 
   const uint32_t now = millis();
   this->last_activity_ms_ = now;
+  this->sleep_timeout_logged_ = false;
 
   if (!this->activity_active_) {
     this->activity_active_ = true;

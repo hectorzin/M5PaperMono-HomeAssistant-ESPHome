@@ -883,6 +883,7 @@ bool M5PM1Component::ldo_set_power_hold(bool enable) {
 bool M5PM1Component::execute_shutdown() {
   ESP_LOGI(TAG, "M5PM1 shutdown requested (SYS_CMD reg 0x0C = 0x%02X)", M5PM1_SYS_CMD_SHUTDOWN);
   this->mark_shutdown_pending_();
+  ESP_LOGI(TAG, "PMIC shutdown marker written (synced to NVS)");
   if (!this->write_byte(M5PM1_REG_SYS_CMD, M5PM1_SYS_CMD_SHUTDOWN)) {
     ESP_LOGE(TAG, "M5PM1 shutdown write failed");
     this->clear_shutdown_pending();

@@ -25,6 +25,7 @@ CONF_QUIET_HOURS_USER_OVERRIDE = "quiet_hours_user_override"
 CONF_BATTERY_DISPLAY_LEVEL = "battery_display_level"
 CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS = "frontlight_default_brightness"
 CONF_FRONTLIGHT_TIMEOUT_SECONDS = "frontlight_timeout_seconds"
+CONF_SLEEP_TIMEOUT_SECONDS = "sleep_timeout_seconds"
 
 papermono_activity_ns = cg.esphome_ns.namespace("papermono_activity")
 PaperMonoActivityComponent = papermono_activity_ns.class_("PaperMonoActivityComponent", cg.Component)
@@ -60,6 +61,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_BATTERY_DISPLAY_LEVEL): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_FRONTLIGHT_TIMEOUT_SECONDS): cv.use_id(globals.GlobalsComponent),
+        cv.Required(CONF_SLEEP_TIMEOUT_SECONDS): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_SCREENSAVER_REFRESH_MINUTES): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_START): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_END): cv.use_id(globals.GlobalsComponent),
@@ -83,6 +85,7 @@ async def to_code(config):
     battery_display_level = await cg.get_variable(config[CONF_BATTERY_DISPLAY_LEVEL])
     frontlight_default_brightness = await cg.get_variable(config[CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS])
     frontlight_timeout_seconds = await cg.get_variable(config[CONF_FRONTLIGHT_TIMEOUT_SECONDS])
+    sleep_timeout_seconds = await cg.get_variable(config[CONF_SLEEP_TIMEOUT_SECONDS])
     screensaver_refresh_minutes = await cg.get_variable(config[CONF_SCREENSAVER_REFRESH_MINUTES])
     quiet_hours_start = await cg.get_variable(config[CONF_QUIET_HOURS_START])
     quiet_hours_end = await cg.get_variable(config[CONF_QUIET_HOURS_END])
@@ -99,6 +102,7 @@ async def to_code(config):
     cg.add(var.set_battery_display_level(battery_display_level))
     cg.add(var.set_frontlight_default_brightness(frontlight_default_brightness))
     cg.add(var.set_frontlight_timeout_seconds(frontlight_timeout_seconds))
+    cg.add(var.set_sleep_timeout_seconds(sleep_timeout_seconds))
     cg.add(var.set_screensaver_refresh_minutes(screensaver_refresh_minutes))
     cg.add(var.set_quiet_hours_start(quiet_hours_start))
     cg.add(var.set_quiet_hours_end(quiet_hours_end))

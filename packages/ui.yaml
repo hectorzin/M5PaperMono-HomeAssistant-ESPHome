@@ -61,6 +61,11 @@ image:
     resize: 86x86
     type: grayscale
     transparency: alpha_channel
+  - file: mdi:moon-waning-crescent
+    id: sleeping_moon_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
   - file: mdi:home-assistant
     id: home_assistant_icon
     resize: 160x160
@@ -300,13 +305,9 @@ display:
 
           if (battery_level_available) {
             const float level = id(paper_mono_battery_display_level);
-            int bars = 0;
-            if (level >= 25.0f) bars = 1;
-            if (level >= 50.0f) bars = 2;
-            if (level >= 75.0f) bars = 3;
-            if (level >= 90.0f) bars = 4;
-            for (int i = 0; i < bars; i++)
-              it.filled_rectangle(x + 3 + i * 7, y + 3, 5, 14, Color::BLACK);
+            const int fill_width = static_cast<int>(roundf(level * 26.0f / 100.0f));
+            if (fill_width > 0)
+              it.filled_rectangle(x + 3, y + 3, fill_width, 14, Color::BLACK);
             it.printf(x + 41, y + 10, id(font_device_battery), Color::BLACK,
                       TextAlign::CENTER_LEFT, "%.0f%%", level);
             it.printf(x + 42, y + 10, id(font_device_battery), Color::BLACK,
@@ -327,23 +328,47 @@ display:
 
         // Header: the HA time source is intentionally the sole source of truth.
         const auto now = id(ha_time).now();
+        auto parse_quiet_time = [](const char *value) {
+          if (value == nullptr || strlen(value) != 5 || value[2] != ':' ||
+              value[0] < '0' || value[0] > '9' || value[1] < '0' || value[1] > '9' ||
+              value[3] < '0' || value[3] > '9' || value[4] < '0' || value[4] > '9')
+            return -1;
+          const int hour = (value[0] - '0') * 10 + (value[1] - '0');
+          const int minute = (value[3] - '0') * 10 + (value[4] - '0');
+          return hour <= 23 && minute <= 59 ? hour * 60 + minute : -1;
+        };
         if (now.is_valid()) {
-          const int displayed_minute = (now.minute / 5) * 5;
-          it.printf(28, 31, id(font_time), Color::BLACK, "%02d:%02d", now.hour, displayed_minute);
-          // ESPHome reports Sunday as 1 through Saturday as 7. Convert to a
-          // zero-based Spanish lookup so the device locale is irrelevant.
-          static const char *const WEEKDAYS[] = {"DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"};
-          static const char *const MONTHS[] = {"ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"};
-          const int weekday = (now.day_of_week + 6) % 7;
-          const int month = now.month >= 1 && now.month <= 12 ? now.month - 1 : 0;
-          char date_text[32];
-          snprintf(date_text, sizeof(date_text), "%s %d %s", WEEKDAYS[weekday], now.day_of_month, MONTHS[month]);
-          it.print(32, 111, id(font_label), Color::BLACK, date_text);
+          const int current_minutes = now.hour * 60 + now.minute;
+          const int quiet_start = parse_quiet_time("${quiet_hours_start}");
+          const int quiet_end = parse_quiet_time("${quiet_hours_end}");
+          const bool quiet_hours = quiet_start >= 0 && quiet_end >= 0 && quiet_start < quiet_end
+              ? current_minutes >= quiet_start && current_minutes < quiet_end
+              : quiet_start >= 0 && quiet_end >= 0 && quiet_start > quiet_end &&
+                (current_minutes >= quiet_start || current_minutes < quiet_end);
+          if (quiet_hours) {
+            const int header_time_center = 112;
+            it.printf(header_time_center, 43, id(font_time), Color::BLACK,
+                      TextAlign::TOP_CENTER, "ZZZ");
+            it.image(348, 38, id(sleeping_moon_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          } else {
+            const int displayed_minute = (now.minute / 5) * 5;
+            it.printf(28, 31, id(font_time), Color::BLACK, "%02d:%02d", now.hour, displayed_minute);
+            // ESPHome reports Sunday as 1 through Saturday as 7. Convert to a
+            // zero-based Spanish lookup so the device locale is irrelevant.
+            static const char *const WEEKDAYS[] = {"DOMINGO", "LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES", "SABADO"};
+            static const char *const MONTHS[] = {"ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"};
+            const int weekday = (now.day_of_week + 6) % 7;
+            const int month = now.month >= 1 && now.month <= 12 ? now.month - 1 : 0;
+            char date_text[32];
+            snprintf(date_text, sizeof(date_text), "%s %d %s", WEEKDAYS[weekday], now.day_of_month, MONTHS[month]);
+            it.print(32, 111, id(font_label), Color::BLACK, date_text);
+            draw_weather_icon(348, 38);
+          }
         } else {
           it.print(28, 31, id(font_time), Color::BLACK, "--:--");
           it.print(32, 111, id(font_label), Color::BLACK, "---");
+          draw_weather_icon(348, 38);
         }
-        draw_weather_icon(348, 38);
         draw_device_battery(380, 13);
         it.line(28, 143, w - 28, 143, Color::BLACK);
 

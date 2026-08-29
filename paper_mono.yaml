@@ -2,6 +2,8 @@
 # config/home_assistant.yaml; the packages below compose the stable firmware.
 substitutions:
   device_name: paper-mono
+  quiet_hours_start: "00:00"
+  quiet_hours_end: "07:00"
 
 packages:
   core: !include packages/core.yaml

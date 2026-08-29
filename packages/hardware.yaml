@@ -12,7 +12,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [papermono_epaper, m5pm1, m5ioe1, papermono_activity, papermono_imu]
+    components: [papermono_epaper, m5pm1, m5ioe1, papermono_activity, papermono_imu, papermono_rtc]
 
 i2c:
   id: bus_main
@@ -23,6 +23,11 @@ i2c:
 m5ioe1:
   id: m5ioe1_hub
   address: 0x4F
+
+papermono_rtc:
+  id: papermono_rtc_hub
+  i2c_id: bus_main
+  address: 0x32
 
 # EPD and touch rails must be enabled before the display/touch drivers initialize.
 # epaper_spi enable_pin is declared in YAML schema but not wired in C++ (ESPHome 2026.6.5).

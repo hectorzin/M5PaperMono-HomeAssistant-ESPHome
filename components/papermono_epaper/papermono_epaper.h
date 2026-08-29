@@ -18,6 +18,14 @@
 #include "esphome/components/spi/spi.h"
 #include "esphome/core/component.h"
 
+namespace esphome::m5ioe1 {
+class M5IOE1Component;
+}
+
+namespace esphome::m5pm1 {
+class M5PM1Component;
+}
+
 namespace esphome::papermono_epaper {
 
 static constexpr uint8_t TRANSFORM_NONE = 0;
@@ -46,7 +54,20 @@ class PaperMonoEpaper
   void set_full_update_every(uint8_t every) { this->full_update_every_ = every; }
   uint8_t get_partial_count() const { return this->partial_count_; }
   bool is_idle() const;
+  bool has_refresh_pending() const;
   bool has_baseline() const;
+  bool is_hw_ready_for_refresh() const { return this->hw_ready_for_refresh_ && !this->hw_recovery_failed_; }
+  bool is_pmic_recovery_pending() const { return this->recovery_pending_; }
+  bool is_pmic_recovery_failed() const { return this->hw_recovery_failed_; }
+  bool is_pmic_initial_full_required() const { return this->pmic_initial_full_required_; }
+  bool is_pmic_mandatory_full_pending() const { return this->must_force_pmic_mandatory_full_(); }
+  bool is_pmic_mandatory_full_done() const { return this->pmic_mandatory_full_done_; }
+  void set_pmu(m5pm1::M5PM1Component *pmu) { this->pmu_ = pmu; }
+  void arm_pmic_initial_full();
+  void update_from_pmic_recovery();
+  void begin_pmic_wake_recovery(m5pm1::M5PM1Component *pmu);
+  bool run_pmic_wake_epd_hardware_recovery(m5ioe1::M5IOE1Component *ioe, m5pm1::M5PM1Component *pmu);
+  void fail_pmic_wake_recovery(m5pm1::M5PM1Component *pmu, const char *failure_stage);
   void set_rotation(display::DisplayRotation rotation) override {
     display::Display::set_rotation(rotation);
     this->update_effective_transform_();
@@ -109,11 +130,20 @@ class PaperMonoEpaper
   static constexpr size_t MAX_PARTIAL_REGIONS = 4;
   static constexpr uint32_t MAX_TRANSFER_SLICE_MS = 10;
   static constexpr uint32_t BUSY_TIMEOUT_MS = 15000;
+  static constexpr uint32_t PMIC_WAKE_BUSY_WAIT_MS = 3000;
+  static constexpr uint32_t PMIC_WAKE_POWER_SETTLE_MS = 100;
   static constexpr size_t SPI_CHUNK = 256;
+
+  static const char *busy_level_label_(bool busy);
+  bool wait_busy_idle_(uint32_t timeout_ms);
 
   void update_effective_transform_();
   bool rotate_point_(int &x, int &y) const;
 
+  bool must_force_pmic_mandatory_full_() const;
+  void sync_pmic_mandatory_full_gate_();
+  bool enforce_pmic_mandatory_full_gate_(const char *stage);
+  void log_physical_refresh_commit_(const char *stage) const;
   void request_refresh_(bool full);
   void begin_refresh_(bool full);
   void process_pending_refresh_();
@@ -166,6 +196,17 @@ class PaperMonoEpaper
   uint8_t logical_region_count_{0};
   uint16_t transfer_row_{0};
   bool ram_write_open_{false};
+  bool hw_ready_for_refresh_{true};
+  bool hw_recovery_failed_{false};
+  bool pmic_recovery_attempted_{false};
+  bool recovery_pending_{false};
+  bool pmic_initial_full_required_{false};
+  bool pmic_initial_full_started_{false};
+  bool pmic_mandatory_full_done_{false};
+  bool pmic_refresh_deferred_logged_{false};
+  bool pmic_partial_blocked_logged_{false};
+  const char *refresh_source_{"unknown"};
+  m5pm1::M5PM1Component *pmu_{nullptr};
 };
 
 }  // namespace esphome::papermono_epaper

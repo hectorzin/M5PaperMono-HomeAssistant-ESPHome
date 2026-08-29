@@ -209,7 +209,7 @@ void PaperMonoImuComponent::setup() {
     return;
   }
 
-  this->pmu_->set_motion_handler([this]() { this->handle_motion_irq(); });
+  this->pmu_->set_motion_handler([this]() { return this->handle_motion_irq(); });
   this->configured_ = true;
   ESP_LOGI(TAG, "Motion IRQ route: BMI270 INT1 -> M5PM1 GPIO4 -> PY_IRQ (GPIO1)");
 }

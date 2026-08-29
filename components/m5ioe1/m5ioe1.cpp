@@ -64,58 +64,101 @@ static constexpr uint8_t REG_LED_RAM_START = 0x30;
 static constexpr uint8_t REG_RTC_RAM_START = 0x70;
 static constexpr uint8_t REG_AW8737A_PLUSE = 0x90;
 
-
-#define M5IOE1_ERR_FAILED(err) \
-  if (!(err)) { \
-    this->mark_failed(); \
-    return; \
+bool M5IOE1Component::finish_hardware_init_(bool allow_chip_reset) {
+  if (this->hw_initialized_) {
+    return true;
   }
 
-
-void M5IOE1Component::setup() {
-  ESP_LOGD(TAG, "Setting up M5IOE1...");
-  // if reset is set, setup will take longer
-  // there is internal logics to handle reset in M5IOE1
-  if ( this->reset_ ) {
-    // software reset
-    M5IOE1_ERR_FAILED(this->write_byte(REG_RESET, 0x3A));
+  if (allow_chip_reset && this->reset_) {
+    if (!this->write_byte(REG_RESET, 0x3A)) {
+      return false;
+    }
     delay(1000);
+  } else if (!allow_chip_reset) {
+    delay(20);
   } else {
     delay(20);
   }
 
-  // Read chip info
   uint8_t uid[2];
-  uint8_t revision;
-  M5IOE1_ERR_FAILED(this->read_bytes(REG_UID_L, uid, 2));
-  M5IOE1_ERR_FAILED(this->read_byte(REG_VERSION, &revision));
-  
-  if (revision == 0x00 || revision == 0xFF) {
-    ESP_LOGE(TAG, "Invalid version 0x%02X", revision);
-    this->mark_failed();
-    return;
+  uint8_t revision = 0;
+  if (!this->read_bytes(REG_UID_L, uid, 2)) {
+    return false;
+  }
+  if (!this->read_byte(REG_VERSION, &revision)) {
+    return false;
   }
 
-  this->device_uid_ = (uid[1] << 8) | uid[0];
-  this->firm_ver_   = revision;
+  if (revision == 0x00 || revision == 0xFF) {
+    ESP_LOGW(TAG, "Invalid M5IOE1 version 0x%02X", revision);
+    return false;
+  }
 
-  // configure PWM frequency
-  M5IOE1_ERR_FAILED(this->write_bytes(REG_PWM_FREQ_L, 
-                                    reinterpret_cast<uint8_t *>(&this->pwm_freq_), 2));
+  this->device_uid_ = static_cast<uint16_t>((uid[1] << 8) | uid[0]);
+  this->firm_ver_ = revision;
 
-  // Attach GPIO Interrupt
+  if (!this->write_bytes(REG_PWM_FREQ_L, reinterpret_cast<uint8_t *>(&this->pwm_freq_), 2)) {
+    return false;
+  }
+
   if (this->interrupt_pin_ != nullptr) {
     this->interrupt_pin_->setup();
     this->interrupt_pin_->attach_interrupt(&M5IOE1Component::gpio_intr, this, gpio::INTERRUPT_FALLING_EDGE);
-    // Don't invalidate cache on read — only invalidate when interrupt fires
     this->set_invalidate_on_read_(false);
   }
-  // Disable loop until an input pin is configured via pin_mode()
-  // For interrupt-driven mode, loop is re-enabled by the ISR
-  // For polling mode, loop is re-enabled when pin_mode() registers an input pin
   this->disable_loop();
-  
-  ESP_LOGD(TAG, "M5IOE1 Setup finished.");
+
+  this->hw_initialized_ = true;
+  this->init_deferred_ = false;
+  return true;
+}
+
+void M5IOE1Component::setup() {
+  ESP_LOGD(TAG, "Setting up M5IOE1...");
+  if (this->finish_hardware_init_(true)) {
+    ESP_LOGD(TAG, "M5IOE1 Setup finished.");
+    return;
+  }
+
+  this->init_deferred_ = true;
+  ESP_LOGW(TAG, "M5IOE1 init deferred (device not ready at setup time)");
+}
+
+bool M5IOE1Component::raw_probe_version_(uint8_t *revision) {
+  if (revision == nullptr) {
+    return false;
+  }
+  *revision = 0;
+  if (!this->read_byte(REG_VERSION, revision)) {
+    return false;
+  }
+  return *revision != 0x00 && *revision != 0xFF;
+}
+
+bool M5IOE1Component::raw_probe_version(uint8_t *revision) { return this->raw_probe_version_(revision); }
+
+void M5IOE1Component::log_recovery_diagnostic() {
+  uint8_t raw_version = 0;
+  const bool raw_ok = this->raw_probe_version_(&raw_version);
+  ESP_LOGI(TAG, "M5IOE1 recovery:");
+  ESP_LOGI(TAG, "  component_failed=%s", this->is_failed() ? "yes" : "no");
+  ESP_LOGI(TAG, "  initialized=%s", this->hw_initialized_ ? "yes" : "no");
+  ESP_LOGI(TAG, "  raw_i2c_0x4F=%s", raw_ok ? "yes" : "no");
+  ESP_LOGI(TAG, "  version=0x%02X", raw_version);
+}
+
+bool M5IOE1Component::probe_device_responding() {
+  uint8_t revision = 0;
+  if (!this->raw_probe_version_(&revision)) {
+    return false;
+  }
+  if (!this->hw_initialized_) {
+    if (!this->finish_hardware_init_(false)) {
+      return false;
+    }
+    ESP_LOGI(TAG, "M5IOE1 deferred init completed (version=0x%02X)", revision);
+  }
+  return true;
 }
 
 void IRAM_ATTR M5IOE1Component::gpio_intr(M5IOE1Component *arg) { arg->enable_loop_soon_any_context(); }
@@ -130,6 +173,11 @@ void M5IOE1Component::loop() {
   if (this->interrupt_pin_ != nullptr && this->interrupt_pin_->digital_read()) {
     this->disable_loop();
   }
+}
+
+void M5IOE1Component::set_pin_output_level(uint8_t pin, bool high) {
+  this->pin_mode(pin, gpio::FLAG_OUTPUT);
+  this->digital_write(pin, high);
 }
 
 void M5IOE1Component::dump_config() {

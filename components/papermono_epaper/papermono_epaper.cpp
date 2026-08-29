@@ -10,6 +10,8 @@
  */
 #include "papermono_epaper.h"
 
+#include "esphome/components/m5ioe1/m5ioe1.h"
+#include "esphome/components/m5pm1/m5pm1.h"
 #include "esphome/core/application.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
@@ -39,6 +41,157 @@ static constexpr uint8_t CMD_RAM_Y_RANGE = 0x45;
 static constexpr uint8_t CMD_RAM_X_COUNTER = 0x4E;
 static constexpr uint8_t CMD_RAM_Y_COUNTER = 0x4F;
 
+// M5IOE1 ESPHome pin numbers (see packages/hardware.yaml).
+// M5IOE1 sits on L2/L3A; it enables L3B rails for EPD/touch after PMIC wake.
+static constexpr uint8_t EPD_POWER_IOE_PIN = 2;
+static constexpr uint8_t TOUCH_POWER_IOE_PIN = 12;
+static constexpr uint8_t TOUCH_RESET_IOE_PIN = 5;
+
+static void note_epd_recovery_result_(m5pm1::M5PM1Component *pmu, bool ok, const char *failure_stage) {
+  if (pmu == nullptr) {
+    return;
+  }
+  pmu->note_epd_recovery_result(ok, failure_stage);
+}
+
+const char *PaperMonoEpaper::busy_level_label_(bool busy) { return busy ? "HIGH(busy)" : "LOW(idle)"; }
+
+bool PaperMonoEpaper::wait_busy_idle_(uint32_t timeout_ms) {
+  const uint32_t deadline = millis() + timeout_ms;
+  while (!this->is_idle_()) {
+    if (millis() >= deadline) {
+      return false;
+    }
+    delay(10);
+  }
+  return true;
+}
+
+void PaperMonoEpaper::begin_pmic_wake_recovery(m5pm1::M5PM1Component *pmu) {
+  if (this->recovery_pending_ || this->pmic_recovery_attempted_) {
+    return;
+  }
+  if (pmu != nullptr && pmu->is_boot_from_pmic_shutdown()) {
+    this->arm_pmic_initial_full();
+  }
+  this->recovery_pending_ = true;
+  this->pmic_recovery_attempted_ = true;
+  this->hw_ready_for_refresh_ = false;
+  this->hw_recovery_failed_ = false;
+  if (pmu != nullptr) {
+    pmu->note_epd_recovery_attempted();
+  }
+}
+
+void PaperMonoEpaper::arm_pmic_initial_full() {
+  if (this->pmic_mandatory_full_done_ || this->pmic_initial_full_required_)
+    return;
+  this->pmic_initial_full_required_ = true;
+  ESP_LOGI(TAG, "PMIC boot: blocking refresh until initial FULL");
+  ESP_LOGI(TAG, "EPD: initial_full_required=yes");
+}
+
+bool PaperMonoEpaper::must_force_pmic_mandatory_full_() const {
+  if (this->pmic_mandatory_full_done_) {
+    return false;
+  }
+  if (this->pmic_initial_full_required_) {
+    return true;
+  }
+  return this->pmu_ != nullptr && this->pmu_->is_boot_from_pmic_shutdown();
+}
+
+void PaperMonoEpaper::sync_pmic_mandatory_full_gate_() {
+  if (this->pmic_mandatory_full_done_) {
+    return;
+  }
+  if (this->pmu_ != nullptr && this->pmu_->is_boot_from_pmic_shutdown() && !this->pmic_initial_full_required_) {
+    ESP_LOGI(TAG, "EPD: late PMIC mandatory FULL gate armed from WAKE_SRC");
+    this->pmic_initial_full_required_ = true;
+  }
+}
+
+bool PaperMonoEpaper::enforce_pmic_mandatory_full_gate_(const char *stage) {
+  this->sync_pmic_mandatory_full_gate_();
+  if (!this->must_force_pmic_mandatory_full_()) {
+    return false;
+  }
+  if (!this->full_refresh_) {
+    if (!this->pmic_partial_blocked_logged_) {
+      ESP_LOGI(TAG, "PMIC boot: PARTIAL request deferred until mandatory FULL (%s)", stage);
+      this->pmic_partial_blocked_logged_ = true;
+    }
+    this->full_refresh_ = true;
+    return true;
+  }
+  return false;
+}
+
+void PaperMonoEpaper::log_physical_refresh_commit_(const char *stage) const {
+  ESP_LOGI(TAG, "EPD physical refresh request (%s):", stage);
+  ESP_LOGI(TAG, "  mode=%s", this->full_refresh_ ? "FULL" : "PARTIAL");
+  ESP_LOGI(TAG, "  source=%s", this->refresh_source_ != nullptr ? this->refresh_source_ : "unknown");
+  ESP_LOGI(TAG, "  pmic_initial_full_required=%s", this->pmic_initial_full_required_ ? "yes" : "no");
+  ESP_LOGI(TAG, "  pmic_initial_full_started=%s", this->pmic_initial_full_started_ ? "yes" : "no");
+  ESP_LOGI(TAG, "  pmic_mandatory_full_done=%s", this->pmic_mandatory_full_done_ ? "yes" : "no");
+  ESP_LOGI(TAG, "  hw_ready=%s", this->hw_ready_for_refresh_ ? "yes" : "no");
+  ESP_LOGI(TAG, "  recovery_pending=%s", this->recovery_pending_ ? "yes" : "no");
+  ESP_LOGI(TAG, "  baseline_ready=%s", this->baseline_ready_ ? "yes" : "no");
+}
+
+void PaperMonoEpaper::fail_pmic_wake_recovery(m5pm1::M5PM1Component *pmu, const char *failure_stage) {
+  this->recovery_pending_ = false;
+  this->hw_ready_for_refresh_ = false;
+  this->hw_recovery_failed_ = true;
+  note_epd_recovery_result_(pmu, false, failure_stage);
+}
+
+bool PaperMonoEpaper::run_pmic_wake_epd_hardware_recovery(m5ioe1::M5IOE1Component *ioe, m5pm1::M5PM1Component *pmu) {
+  if (ioe == nullptr || !ioe->probe_device_responding()) {
+    ESP_LOGE(TAG, "PMIC wake: M5IOE1 unavailable");
+    this->fail_pmic_wake_recovery(pmu, "M5IOE1 unavailable");
+    return false;
+  }
+
+  ESP_LOGI(TAG, "PMIC wake: recovering EPD hardware");
+
+  ioe->set_pin_output_level(EPD_POWER_IOE_PIN, true);
+  ESP_LOGI(TAG, "EPD power ON");
+  ioe->set_pin_output_level(TOUCH_POWER_IOE_PIN, true);
+  ESP_LOGI(TAG, "Touch power ON");
+
+  delay(PMIC_WAKE_POWER_SETTLE_MS);
+
+  const bool busy_before = !this->is_idle_();
+  ESP_LOGI(TAG, "EPD BUSY before reset: %s", busy_level_label_(busy_before));
+
+  ioe->set_pin_output_level(TOUCH_RESET_IOE_PIN, false);
+  delay(10);
+  ioe->set_pin_output_level(TOUCH_RESET_IOE_PIN, true);
+  ESP_LOGI(TAG, "Touch reset complete");
+
+  this->hardware_reset_begin_(false);
+  delay(10);
+  this->hardware_reset_begin_(true);
+  delay(10);
+  ESP_LOGI(TAG, "EPD reset complete");
+
+  if (!this->wait_busy_idle_(PMIC_WAKE_BUSY_WAIT_MS)) {
+    ESP_LOGE(TAG, "EPD BUSY after hardware reset: %s (recovery failed)", busy_level_label_(!this->is_idle_()));
+    this->fail_pmic_wake_recovery(pmu, "BUSY wait");
+    return false;
+  }
+
+  ESP_LOGI(TAG, "EPD BUSY after hardware reset: %s", busy_level_label_(false));
+  ESP_LOGI(TAG, "PMIC wake: EPD ready");
+  note_epd_recovery_result_(pmu, true, nullptr);
+  this->baseline_ready_ = false;
+  this->partial_count_ = 0;
+  this->recovery_pending_ = false;
+  this->hw_ready_for_refresh_ = true;
+  return true;
+}
+
 void PaperMonoEpaper::setup() {
   RAMAllocator<uint8_t> allocator;
   this->buffer_ = allocator.allocate(FRAME_SIZE);
@@ -55,6 +208,11 @@ void PaperMonoEpaper::setup() {
   this->busy_pin_->setup();
   this->spi_setup();
   this->disable_loop();
+
+  if (this->pmu_ != nullptr && this->pmu_->is_boot_from_pmic_shutdown()) {
+    this->arm_pmic_initial_full();
+  }
+  ESP_LOGI(TAG, "EPD setup: initial_full_required=%s", this->pmic_initial_full_required_ ? "yes" : "no");
 }
 
 void PaperMonoEpaper::dump_config() {
@@ -165,20 +323,64 @@ void PaperMonoEpaper::add_partial_region(int x, int y, int width, int height) {
   rect.h = static_cast<int16_t>(height);
 }
 
-void PaperMonoEpaper::update() { this->request_refresh_(true); }
+void PaperMonoEpaper::update() {
+  this->refresh_source_ = "update";
+  this->request_refresh_(true);
+}
+
+void PaperMonoEpaper::update_from_pmic_recovery() {
+  this->refresh_source_ = "pmic_recovery_complete";
+  this->request_refresh_(true);
+}
 
 void PaperMonoEpaper::update_partial(int x, int y, int width, int height) {
   this->add_partial_region(x, y, width, height);
   this->update_partial();
 }
 
-void PaperMonoEpaper::update_partial() { this->request_refresh_(false); }
+void PaperMonoEpaper::update_partial() {
+  this->refresh_source_ = "update_partial";
+  this->request_refresh_(false);
+}
 
 bool PaperMonoEpaper::is_idle() const { return this->state_ == State::IDLE; }
+
+bool PaperMonoEpaper::has_refresh_pending() const {
+  return this->must_force_pmic_mandatory_full_() || this->pending_update_ || this->pending_full_ ||
+         this->force_full_next_;
+}
 
 bool PaperMonoEpaper::has_baseline() const { return this->baseline_ready_; }
 
 void PaperMonoEpaper::request_refresh_(bool full) {
+  this->sync_pmic_mandatory_full_gate_();
+
+  if (this->hw_recovery_failed_) {
+    ESP_LOGW(TAG, "refresh blocked: EPD hardware recovery failed");
+    return;
+  }
+  if (this->must_force_pmic_mandatory_full_() && !full) {
+    if (!this->pmic_partial_blocked_logged_) {
+      ESP_LOGI(TAG, "PMIC boot: PARTIAL request deferred until mandatory FULL (request_refresh)");
+      this->pmic_partial_blocked_logged_ = true;
+    }
+    full = true;
+  }
+  if (this->recovery_pending_ || !this->hw_ready_for_refresh_) {
+    if (this->must_force_pmic_mandatory_full_()) {
+      this->do_update_();
+      this->pending_update_ = true;
+      this->pending_full_ = true;
+      if (!this->pmic_refresh_deferred_logged_) {
+        ESP_LOGI(TAG, "PMIC boot: refresh deferred until initial FULL");
+        this->pmic_refresh_deferred_logged_ = true;
+      }
+      return;
+    }
+    ESP_LOGW(TAG, "refresh blocked: PMIC wake EPD recovery not complete");
+    return;
+  }
+
   if (!this->baseline_ready_) {
     if (!full)
       ESP_LOGW(TAG, "no monochrome baseline yet, next refresh will be FULL");
@@ -189,20 +391,36 @@ void PaperMonoEpaper::request_refresh_(bool full) {
     ESP_LOGI(TAG, "refresh busy, coalescing pending update");
     this->do_update_();
     this->pending_update_ = true;
-    if (full || this->force_full_next_)
+    if (full || this->force_full_next_ || this->must_force_pmic_mandatory_full_())
       this->pending_full_ = true;
     return;
   }
 
   if (this->force_full_next_)
     full = true;
+  if (this->must_force_pmic_mandatory_full_())
+    full = true;
   this->begin_refresh_(full);
 }
 
 void PaperMonoEpaper::begin_refresh_(bool full) {
+  this->sync_pmic_mandatory_full_gate_();
+
+  if (this->recovery_pending_ || !this->hw_ready_for_refresh_ || this->hw_recovery_failed_) {
+    return;
+  }
   if (this->force_full_next_) {
     full = true;
     this->force_full_next_ = false;
+  }
+  if (this->must_force_pmic_mandatory_full_()) {
+    if (!full && !this->pmic_partial_blocked_logged_) {
+      ESP_LOGI(TAG, "PMIC boot: PARTIAL request deferred until mandatory FULL (begin_refresh)");
+      this->pmic_partial_blocked_logged_ = true;
+    }
+    full = true;
+    this->pending_update_ = false;
+    this->pending_full_ = false;
   }
   this->full_refresh_ = full;
   if (full)
@@ -221,7 +439,10 @@ void PaperMonoEpaper::process_pending_refresh_() {
   this->pending_full_ = false;
   if (this->force_full_next_)
     full = true;
+  if (this->must_force_pmic_mandatory_full_())
+    full = true;
 
+  this->refresh_source_ = "pending";
   ESP_LOGI(TAG, "processing pending update as %s", full ? "FULL" : "PARTIAL");
   this->begin_refresh_(full);
 }
@@ -258,6 +479,11 @@ void PaperMonoEpaper::loop() {
       if (now - this->busy_wait_start_ >= BUSY_TIMEOUT_MS) {
         ESP_LOGE(TAG, "BUSY timeout after %u ms in state %u", static_cast<unsigned>(BUSY_TIMEOUT_MS),
                  static_cast<unsigned>(this->state_));
+        if (this->pmic_recovery_attempted_) {
+          this->hw_recovery_failed_ = true;
+          this->hw_ready_for_refresh_ = false;
+          ESP_LOGE(TAG, "PMIC wake: EPD refresh failed; staying awake for diagnosis");
+        }
         this->send_deep_sleep_();
         this->finish_refresh_(false);
       }
@@ -421,6 +647,20 @@ void PaperMonoEpaper::finish_refresh_(bool success) {
       this->baseline_ready_ = true;
       this->partial_count_ = 0;
       this->force_full_next_ = false;
+      if (this->pmic_initial_full_started_) {
+        this->pmic_initial_full_started_ = false;
+        this->pmic_initial_full_required_ = false;
+        this->pmic_mandatory_full_done_ = true;
+        this->pmic_refresh_deferred_logged_ = false;
+        this->pmic_partial_blocked_logged_ = false;
+        this->hw_ready_for_refresh_ = true;
+        const uint32_t duration_ms = static_cast<uint32_t>(millis() - this->update_start_ms_);
+        if (this->pmu_ != nullptr) {
+          this->pmu_->note_epd_mandatory_full_completed(duration_ms);
+        }
+        ESP_LOGI(TAG, "PMIC boot: mandatory initial FULL complete in %u ms; partial refresh enabled",
+                 duration_ms);
+      }
     } else {
       this->partial_count_++;
       if (this->full_update_every_ > 0) {
@@ -451,8 +691,30 @@ void PaperMonoEpaper::process_state_() {
 
     case State::UPDATE:
       this->do_update_();
+      if (this->enforce_pmic_mandatory_full_gate_("state_update")) {
+        this->logical_region_count_ = 0;
+      }
+      this->log_physical_refresh_commit_("state_update");
       if (this->full_refresh_) {
+        if (this->must_force_pmic_mandatory_full_()) {
+          if (!this->pmic_initial_full_started_) {
+            if (this->pmu_ != nullptr) {
+              this->pmu_->note_epd_mandatory_full_started();
+            }
+            ESP_LOGI(TAG, "PMIC boot: mandatory initial FULL physical start");
+          }
+          this->pmic_initial_full_started_ = true;
+        } else if (this->pmic_mandatory_full_done_) {
+          if (this->pmu_ != nullptr) {
+            this->pmu_->note_epd_normal_full_after_mandatory();
+          }
+          ESP_LOGI(TAG, "PMIC boot: normal FULL after mandatory complete (source=%s)",
+                   this->refresh_source_ != nullptr ? this->refresh_source_ : "unknown");
+        }
         ESP_LOGI(TAG, "FULL refresh OTP Mode 1");
+        if (this->pmic_initial_full_started_) {
+          ESP_LOGI(TAG, "PMIC boot: starting mandatory initial FULL");
+        }
       } else {
         for (uint8_t i = 0; i < this->logical_region_count_; i++) {
           const Rect &logical = this->logical_regions_[i];
@@ -476,7 +738,13 @@ void PaperMonoEpaper::process_state_() {
       break;
 
     case State::WAIT_POST_RESET:
-      if (this->full_refresh_) {
+      if (this->enforce_pmic_mandatory_full_gate_("wait_post_reset")) {
+        if (this->must_force_pmic_mandatory_full_()) {
+          this->pmic_initial_full_started_ = true;
+        }
+        this->log_physical_refresh_commit_("wait_post_reset_forced_full");
+        this->set_state_(State::SOFT_RESET);
+      } else if (this->full_refresh_) {
         this->set_state_(State::SOFT_RESET);
       } else {
         this->set_state_(State::PARTIAL_WAKE);
@@ -533,7 +801,17 @@ void PaperMonoEpaper::process_state_() {
       break;
 
     case State::PARTIAL_WAKE:
+      if (this->enforce_pmic_mandatory_full_gate_("partial_wake")) {
+        if (this->must_force_pmic_mandatory_full_()) {
+          this->pmic_initial_full_started_ = true;
+        }
+        this->log_physical_refresh_commit_("partial_wake_forced_full");
+        this->transfer_row_ = 0;
+        this->set_state_(State::SOFT_RESET);
+        break;
+      }
       // Hardware reset already ran. OTP omits software reset so RAM baseline survives.
+      this->log_physical_refresh_commit_("partial_wake");
       this->cmd_data_(CMD_BORDER, {0x80});
       ESP_LOGI(TAG, "PARTIAL OTP full RAM1 transfer (%u bytes)", static_cast<unsigned>(FRAME_SIZE));
       this->transfer_row_ = 0;

@@ -2,9 +2,18 @@ esphome:
   name: ${device_name}
   friendly_name: M5Stack PaperMono C153
   on_boot:
+    - priority: 300
+      then:
+        - lambda: |-
+            if (id(m5pm1_pmu).is_boot_from_pmic_shutdown()) {
+              id(papermono_activity_hub).begin_pmic_wake_hardware_recovery(id(m5ioe1_hub));
+            }
     - priority: 200
       then:
-        - component.update: epaper_display
+        - lambda: |-
+            if (id(epaper_display).is_hw_ready_for_refresh()) {
+              id(epaper_display).update();
+            }
 
 logger:
   level: DEBUG

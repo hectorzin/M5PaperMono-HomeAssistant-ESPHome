@@ -2,8 +2,19 @@
 papermono_activity:
   id: papermono_activity_hub
   m5pm1_id: m5pm1_pmu
+  rtc_id: papermono_rtc_hub
   display_id: epaper_display
   controls_view: controls_view
+  time_id: ha_time
+  ha_connection_state: ha_connection_state
+  wifi_transition_pending: wifi_transition_pending
+  light_sleep_wake_recovery: light_sleep_wake_recovery
+  quiet_hours_sleep_display: quiet_hours_sleep_display
+  quiet_hours_user_override: quiet_hours_user_override
+  battery_display_level: paper_mono_battery_display_level
+  screensaver_refresh_minutes: ${screensaver_refresh_minutes}
+  quiet_hours_start: ${quiet_hours_start}
+  quiet_hours_end: ${quiet_hours_end}
   timeout: 30s
   on_brightness: 30
 

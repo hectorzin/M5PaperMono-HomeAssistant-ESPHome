@@ -1,6 +1,6 @@
 from esphome import pins
 import esphome.codegen as cg
-from esphome.components import display, spi
+from esphome.components import display, m5pm1, spi
 from esphome.components.display import validate_rotation
 import esphome.config_validation as cv
 from esphome.const import (
@@ -20,6 +20,8 @@ from esphome.const import (
 )
 
 DEPENDENCIES = ["spi"]
+
+CONF_M5PM1_ID = "m5pm1_id"
 
 papermono_epaper_ns = cg.esphome_ns.namespace("papermono_epaper")
 PaperMonoEpaper = papermono_epaper_ns.class_(
@@ -70,6 +72,7 @@ CONFIG_SCHEMA = (
             cv.Required(CONF_DC_PIN): pins.gpio_output_pin_schema,
             cv.Required(CONF_RESET_PIN): pins.gpio_output_pin_schema,
             cv.Required(CONF_BUSY_PIN): pins.gpio_input_pin_schema,
+            cv.Optional(CONF_M5PM1_ID): cv.use_id(m5pm1.M5PM1Component),
         }
     )
 )
@@ -106,3 +109,7 @@ async def to_code(config):
     if transform.get(CONF_MIRROR_Y):
         flags |= TRANSFORM_FLAG_MIRROR_Y
     cg.add(var.set_transform(flags))
+
+    if CONF_M5PM1_ID in config:
+        pmu = await cg.get_variable(config[CONF_M5PM1_ID])
+        cg.add(var.set_pmu(pmu))

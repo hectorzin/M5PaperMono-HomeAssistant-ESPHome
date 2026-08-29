@@ -88,8 +88,22 @@ class M5IOE1Component : public Component,
   // enable aw8737a
   void start_aw8737a(bool enabled) { this->enable_aw8737a_pluse_(enabled); }
 
+  /// True when the chip answers on I2C with a plausible firmware version.
+  bool probe_device_responding();
+  /// Raw REG_VERSION (0x02) read at 0x4F — ignores component failed/initialized flags.
+  bool raw_probe_version(uint8_t *revision);
+  bool is_hardware_initialized() const { return this->hw_initialized_; }
+  bool is_init_deferred() const { return this->init_deferred_; }
+  void log_recovery_diagnostic();
+
+  /// Configure pin as push-pull output and drive the requested level (safe RMW).
+  void set_pin_output_level(uint8_t pin, bool high);
+
  protected:
   static void IRAM_ATTR gpio_intr(M5IOE1Component *arg);
+
+  bool finish_hardware_init_(bool allow_chip_reset);
+  bool raw_probe_version_(uint8_t *revision);
 
   bool digital_read_hw(uint8_t pin) override;
   bool digital_read_cache(uint8_t pin) override;
@@ -116,6 +130,8 @@ class M5IOE1Component : public Component,
   uint16_t interrupt_result_mask_{0};
 
   bool reset_{true};
+  bool hw_initialized_{false};
+  bool init_deferred_{false};
 
   bool read_gpio_modes_();
   bool write_gpio_modes_();

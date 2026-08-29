@@ -156,6 +156,7 @@ globals:
 display:
   - platform: papermono_epaper
     id: epaper_display
+    m5pm1_id: m5pm1_pmu
     spi_id: spi_epd
     update_interval: never
     # 0 = screensaver never auto-FULL from partial_count; explicit policies request FULL.
@@ -328,24 +329,8 @@ display:
 
         // Header: the HA time source is intentionally the sole source of truth.
         const auto now = id(ha_time).now();
-        auto parse_quiet_time = [](const char *value) {
-          if (value == nullptr || strlen(value) != 5 || value[2] != ':' ||
-              value[0] < '0' || value[0] > '9' || value[1] < '0' || value[1] > '9' ||
-              value[3] < '0' || value[3] > '9' || value[4] < '0' || value[4] > '9')
-            return -1;
-          const int hour = (value[0] - '0') * 10 + (value[1] - '0');
-          const int minute = (value[3] - '0') * 10 + (value[4] - '0');
-          return hour <= 23 && minute <= 59 ? hour * 60 + minute : -1;
-        };
         if (now.is_valid()) {
-          const int current_minutes = now.hour * 60 + now.minute;
-          const int quiet_start = parse_quiet_time("${quiet_hours_start}");
-          const int quiet_end = parse_quiet_time("${quiet_hours_end}");
-          const bool quiet_hours = quiet_start >= 0 && quiet_end >= 0 && quiet_start < quiet_end
-              ? current_minutes >= quiet_start && current_minutes < quiet_end
-              : quiet_start >= 0 && quiet_end >= 0 && quiet_start > quiet_end &&
-                (current_minutes >= quiet_start || current_minutes < quiet_end);
-          if (quiet_hours) {
+          if (id(quiet_hours_sleep_display)) {
             const int header_time_center = 112;
             it.printf(header_time_center, 43, id(font_time), Color::BLACK,
                       TextAlign::TOP_CENTER, "ZZZ");

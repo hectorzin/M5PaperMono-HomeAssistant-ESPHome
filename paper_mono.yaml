@@ -3,8 +3,8 @@
 substitutions:
   device_name: paper-mono
   screensaver_refresh_minutes: "5"
-  quiet_hours_start: "00:00"
-  quiet_hours_end: "08:00"
+  quiet_hours_start: "21:25"
+  quiet_hours_end: "23:00"
 
 packages:
   core: !include packages/core.yaml

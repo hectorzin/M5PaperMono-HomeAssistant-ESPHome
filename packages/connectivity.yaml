@@ -16,16 +16,9 @@ time:
     id: ha_time
     on_time:
       - seconds: 0
-        minutes: /5
+        minutes: /${screensaver_refresh_minutes}
         then:
-          - lambda: 'id(m5pm1_pmu).refresh_power_and_battery();'
           - lambda: |-
-              const bool allow_partial = !id(controls_view) && id(ha_connection_state) != 0;
-              ESP_LOGI("scheduler", "Scheduler /5: controls=%d ha_state=%d -> partial=%s",
-                       id(controls_view), id(ha_connection_state), allow_partial ? "yes" : "no");
-          - if:
-              condition:
-                lambda: 'return !id(controls_view) && id(ha_connection_state) != 0;'
-              then:
-                - lambda: |-
-                    id(epaper_display).update_partial(0, 0, 480, 800);
+              if (id(light_sleep_wake_recovery))
+                return;
+              id(papermono_activity_hub).on_screensaver_tick();

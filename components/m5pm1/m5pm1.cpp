@@ -6,6 +6,8 @@
  */
 #include "m5pm1.h"
 
+#include "driver/gpio.h"
+#include "esp_sleep.h"
 #include "esphome/core/gpio.h"
 #include "esphome/core/log.h"
 
@@ -363,17 +365,88 @@ void M5PM1Component::loop() {
   }
 }
 
-void M5PM1Component::process_irq_() {
+bool M5PM1Component::process_pending_irq() {
+  if (this->irq_pin_ == nullptr) {
+    return false;
+  }
+
+  if (!this->irq_pending_ && this->irq_pin_->digital_read()) {
+    return false;
+  }
+
+  this->irq_pending_ = false;
+  return this->process_irq_();
+}
+
+bool M5PM1Component::prepare_light_sleep_entry() {
+  if (this->irq_pin_ == nullptr) {
+    return true;
+  }
+
+  this->process_pending_irq();
+  if (!this->irq_pin_->digital_read()) {
+    return false;
+  }
+
+  if (this->irq_pending_) {
+    this->process_pending_irq();
+    if (!this->irq_pin_->digital_read()) {
+      return false;
+    }
+  }
+
+  return this->irq_pin_->digital_read();
+}
+
+LightSleepWakeupArmResult M5PM1Component::arm_light_sleep_wakeup(uint64_t timer_us) {
+  LightSleepWakeupArmResult result;
+
+  if (this->irq_pin_ != nullptr) {
+    this->irq_pin_->detach_interrupt();
+    result.gpio1_high = this->irq_pin_->digital_read();
+    const gpio_num_t pin = static_cast<gpio_num_t>(this->irq_pin_->get_pin());
+    result.gpio_disable = gpio_wakeup_disable(pin);
+  }
+
+  result.disable_timer = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_TIMER);
+  result.disable_gpio = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+  result.disable_ext1 = esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_EXT1);
+
+  result.timer = esp_sleep_enable_timer_wakeup(timer_us);
+
+  if (this->irq_pin_ != nullptr) {
+    const gpio_num_t pin = static_cast<gpio_num_t>(this->irq_pin_->get_pin());
+    const uint64_t mask = 1ULL << static_cast<uint32_t>(pin);
+    result.ext1 = esp_sleep_enable_ext1_wakeup_io(mask, ESP_EXT1_WAKEUP_ANY_LOW);
+  }
+
+  return result;
+}
+
+void M5PM1Component::restore_after_light_sleep() {
+  if (this->irq_pin_ == nullptr) {
+    return;
+  }
+
+  const gpio_num_t pin = static_cast<gpio_num_t>(this->irq_pin_->get_pin());
+  gpio_wakeup_disable(pin);
+  this->irq_pin_->setup();
+  this->irq_pin_->pin_mode(gpio::FLAG_INPUT | gpio::FLAG_PULLUP);
+  this->irq_pin_->attach_interrupt(M5PM1Component::irq_isr_, this, gpio::INTERRUPT_FALLING_EDGE);
+}
+
+bool M5PM1Component::process_irq_() {
+  bool motion_handled = false;
   uint8_t gpio_irq = 0;
   if (!this->read_byte(M5PM1_REG_IRQ_STATUS1, &gpio_irq)) {
     ESP_LOGW(TAG, "IRQ_STATUS1 read failed");
-    return;
+    return false;
   }
 
   if (gpio_irq & M5PM1_IRQ_GPIO4) {
     ESP_LOGD(TAG, "USB IRQ: IMU GPIO4 motion (IRQ_STATUS1 bit4)");
     if (this->motion_handler_) {
-      this->motion_handler_();
+      motion_handled = this->motion_handler_();
     }
     const uint8_t clear_gpio = static_cast<uint8_t>(~gpio_irq);
     this->write_byte(M5PM1_REG_IRQ_STATUS1, clear_gpio);
@@ -383,12 +456,12 @@ void M5PM1Component::process_irq_() {
   uint8_t sys_irq = 0;
   if (!this->read_byte(M5PM1_REG_IRQ_STATUS2, &sys_irq)) {
     ESP_LOGW(TAG, "IRQ_STATUS2 read failed");
-    return;
+    return motion_handled;
   }
 
   if (gpio_irq == 0 && sys_irq == 0) {
     this->clear_all_irq_status_();
-    return;
+    return motion_handled;
   }
 
   if (sys_irq & M5PM1_IRQ_SYS_5VIN_INSERT) {
@@ -410,6 +483,7 @@ void M5PM1Component::process_irq_() {
   }
 
   this->write_byte(M5PM1_REG_IRQ_STATUS3, 0x00);
+  return motion_handled;
 }
 
 bool M5PM1Component::set_status_red_led(bool on) {

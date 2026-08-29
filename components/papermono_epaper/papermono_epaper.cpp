@@ -176,6 +176,10 @@ void PaperMonoEpaper::update_partial() { this->request_refresh_(false); }
 
 bool PaperMonoEpaper::is_idle() const { return this->state_ == State::IDLE; }
 
+bool PaperMonoEpaper::has_refresh_pending() const {
+  return this->pending_update_ || this->pending_full_ || this->force_full_next_;
+}
+
 bool PaperMonoEpaper::has_baseline() const { return this->baseline_ready_; }
 
 void PaperMonoEpaper::request_refresh_(bool full) {

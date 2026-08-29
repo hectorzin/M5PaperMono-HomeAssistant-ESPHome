@@ -115,6 +115,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: light_sleep_wake_recovery
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
 # Do not refresh the e-paper when a value arrives. This only governs whether
 # the renderer uses cached HA states or the per-field DEMO defaults.
@@ -128,16 +132,18 @@ interval:
             - lambda: |-
                 if (!id(wifi_connected_state)) {
                   id(wifi_connected_state) = true;
-                  if (id(ha_connection_state) == 0)
+                  if (id(ha_connection_state) == 0 && !id(light_sleep_wake_recovery))
                     id(wifi_transition_pending) = true;
                 }
-                if (id(wifi_transition_pending) && id(ha_connection_state) == 0 &&
+                if (!id(light_sleep_wake_recovery) && id(wifi_transition_pending) && id(ha_connection_state) == 0 &&
                     id(epaper_display).is_idle() && id(epaper_display).has_baseline()) {
                   id(epaper_display).update_partial(0, 0, 480, 800);
                   id(wifi_transition_pending) = false;
                 }
           else:
             - lambda: |-
+                if (id(light_sleep_wake_recovery))
+                  return;
                 if (id(wifi_connected_state) && id(ha_connection_state) != 0) {
                   id(wifi_connected_state) = false;
                 }
@@ -156,7 +162,7 @@ interval:
                     id(wifi_transition_pending) = false;
                     id(ha_connection_state) = 1;
                     id(ha_connecting_since_ms) = 0;
-                    if (!id(controls_view))
+                    if (!id(controls_view) && !id(light_sleep_wake_recovery))
                       id(epaper_display).update();
                 }
                 }
@@ -165,6 +171,8 @@ interval:
                 }
           else:
             - lambda: |-
+                if (id(light_sleep_wake_recovery))
+                  return;
                 id(ha_connecting_since_ms) = 0;
                 const bool timeout = id(ha_ever_connected)
                     ? (uint32_t) (millis() - id(ha_last_connected_ms)) > 60000U

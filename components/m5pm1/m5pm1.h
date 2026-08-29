@@ -8,6 +8,8 @@
 
 #include <functional>
 
+#include "esp_err.h"
+
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/sensor/sensor.h"
@@ -15,6 +17,16 @@
 #include "esphome/core/gpio.h"
 
 namespace esphome::m5pm1 {
+
+struct LightSleepWakeupArmResult {
+  esp_err_t disable_timer{ESP_OK};
+  esp_err_t disable_gpio{ESP_OK};
+  esp_err_t disable_ext1{ESP_OK};
+  esp_err_t gpio_disable{ESP_OK};
+  esp_err_t timer{ESP_OK};
+  esp_err_t ext1{ESP_OK};
+  bool gpio1_high{true};
+};
 
 class M5PM1Component : public Component, public i2c::I2CDevice {
  public:
@@ -38,10 +50,18 @@ class M5PM1Component : public Component, public i2c::I2CDevice {
 
   // BMI270 INT1 -> M5PM1 GPIO4 -> PY_IRQ (ESP32 GPIO1).
   bool configure_imu_irq_route_();
-  void set_motion_handler(std::function<void()> handler) { this->motion_handler_ = std::move(handler); }
+  void set_motion_handler(std::function<bool()> handler) { this->motion_handler_ = std::move(handler); }
 
   // Read PWR_SRC + VBAT and publish linked sensors. Safe to call from the main loop only.
   void refresh_power_and_battery();
+
+  // ESP32-S3 light sleep: PY_IRQ (GPIO1) via EXT1 ANY_LOW + RTC timer wake.
+  LightSleepWakeupArmResult arm_light_sleep_wakeup(uint64_t timer_us);
+  void restore_after_light_sleep();
+  // Main-loop or post-wake IRQ dispatch. Returns true when BMI270 any-motion was handled.
+  bool process_pending_irq();
+  // Clear PMIC IRQ state and verify PY_IRQ is idle-high before light sleep entry.
+  bool prepare_light_sleep_entry();
 
  protected:
   static void IRAM_ATTR irq_isr_(M5PM1Component *arg);
@@ -53,7 +73,7 @@ class M5PM1Component : public Component, public i2c::I2CDevice {
   bool configure_frontlight_pwm_hw_();
   bool set_single_reset_disable_(bool disable);
   optional<bool> get_single_reset_disabled_();
-  void process_irq_();
+  bool process_irq_();
   void clear_all_irq_status_();
   optional<uint16_t> read_vbat_mv_();
   optional<uint8_t> read_pwr_src_();
@@ -64,7 +84,7 @@ class M5PM1Component : public Component, public i2c::I2CDevice {
   sensor::Sensor *battery_voltage_sensor_{nullptr};
   sensor::Sensor *battery_level_sensor_{nullptr};
   binary_sensor::BinarySensor *external_power_binary_sensor_{nullptr};
-  std::function<void()> motion_handler_;
+  std::function<bool()> motion_handler_;
   bool frontlight_hw_ready_{false};
 };
 

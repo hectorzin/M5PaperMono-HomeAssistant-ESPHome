@@ -351,7 +351,7 @@ display:
                       TextAlign::TOP_CENTER, "ZZZ");
             it.image(348, 38, id(sleeping_moon_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
           } else {
-            const int displayed_minute = (now.minute / 5) * 5;
+            const int displayed_minute = (now.minute / ${screensaver_refresh_minutes}) * ${screensaver_refresh_minutes};
             it.printf(28, 31, id(font_time), Color::BLACK, "%02d:%02d", now.hour, displayed_minute);
             // ESPHome reports Sunday as 1 through Saturday as 7. Convert to a
             // zero-based Spanish lookup so the device locale is irrelevant.

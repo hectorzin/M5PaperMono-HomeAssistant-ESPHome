@@ -4,6 +4,11 @@ papermono_activity:
   m5pm1_id: m5pm1_pmu
   display_id: epaper_display
   controls_view: controls_view
+  time_id: ha_time
+  ha_connection_state: ha_connection_state
+  wifi_transition_pending: wifi_transition_pending
+  light_sleep_wake_recovery: light_sleep_wake_recovery
+  screensaver_refresh_minutes: ${screensaver_refresh_minutes}
   timeout: 30s
   on_brightness: 30
 

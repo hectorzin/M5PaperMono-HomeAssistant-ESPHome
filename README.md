@@ -215,5 +215,11 @@ quiet_hours_end: "08:00"
   `5`, `10`, `15` o `30`.
 - `quiet_hours_start` define el comienzo de la ventana nocturna en formato
   `HH:MM`.
+
+Durante el funcionamiento, estos valores se pueden editar desde Home Assistant
+con las entidades de configuración del dispositivo. Se restauran mediante NVS
+(`globals` persistentes de ESPHome); por tanto, los valores de este YAML solo
+son defaults iniciales. `Paper Mono Restore Defaults` reaplica todos los
+defaults compilados.
 - `quiet_hours_end` define cuándo el RTC debe hacer el power-on al terminar la
   ventana nocturna, también en formato `HH:MM`.

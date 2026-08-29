@@ -16,7 +16,7 @@ time:
     id: ha_time
     on_time:
       - seconds: 0
-        minutes: /${screensaver_refresh_minutes}
+        minutes: /1
         then:
           - lambda: |-
               if (id(light_sleep_wake_recovery))

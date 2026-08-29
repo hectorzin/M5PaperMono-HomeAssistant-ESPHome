@@ -17,11 +17,15 @@
 #include "esphome/components/wifi/wifi_component.h"
 #include "esphome/core/log.h"
 
+#include "driver/gpio.h"
 #include "esp_sleep.h"
 
 namespace esphome::papermono_activity {
 
 static const char *const TAG = "papermono_activity";
+
+// FT6336G touch INT -> ESP32 GPIO4 (active low, pull-up in hardware.yaml).
+static constexpr gpio_num_t TOUCH_WAKE_GPIO = GPIO_NUM_4;
 
 static constexpr uint8_t SCREENSAVER_FULL_EVERY = 0;
 static constexpr uint8_t CONTROLS_FULL_EVERY = 15;
@@ -97,9 +101,9 @@ void PaperMonoActivityComponent::setup() {
   this->handle_boot_wake_source_();
   this->request_screensaver_refresh_policy_();
   ESP_LOGI(TAG, "Frontlight init: OFF (boot default)");
-  ESP_LOGI(TAG, "Activity timeout: %u ms, on level: %u%%", this->timeout_ms_, this->on_brightness_percent_);
-  ESP_LOGI(TAG, "Screensaver refresh interval: %u min (clock-aligned)", this->screensaver_refresh_minutes_);
-  ESP_LOGI(TAG, "Quiet hours: %s -> %s", this->quiet_hours_start_.c_str(), this->quiet_hours_end_.c_str());
+  ESP_LOGI(TAG, "Runtime config: frontlight_brightness=%u%% frontlight_timeout=%us quiet_start=%s quiet_end=%s refresh_interval=%umin",
+           this->on_brightness_percent_(), this->timeout_ms_() / 1000U, this->quiet_hours_start_value_().c_str(),
+           this->quiet_hours_end_value_().c_str(), this->screensaver_refresh_minutes_());
 }
 
 void PaperMonoActivityComponent::loop() {
@@ -132,12 +136,12 @@ void PaperMonoActivityComponent::loop() {
     this->enter_light_sleep_();
   }
 
-  if (!this->activity_active_ || this->timeout_ms_ == 0) {
+  if (!this->activity_active_ || this->timeout_ms_() == 0) {
     return;
   }
 
   const uint32_t now = millis();
-  if (now - this->last_activity_ms_ >= this->timeout_ms_) {
+  if (now - this->last_activity_ms_ >= this->timeout_ms_()) {
     this->turn_off_timeout_();
   }
 }
@@ -269,7 +273,7 @@ void PaperMonoActivityComponent::exit_controls() {
 }
 
 uint32_t PaperMonoActivityComponent::current_time_bucket_() const {
-  if (this->time_ == nullptr || this->screensaver_refresh_minutes_ == 0) {
+  if (this->time_ == nullptr || this->screensaver_refresh_minutes_() == 0) {
     return UINT32_MAX;
   }
   const ESPTime now = this->time_->now();
@@ -277,7 +281,7 @@ uint32_t PaperMonoActivityComponent::current_time_bucket_() const {
     return UINT32_MAX;
   }
   const uint32_t day_minutes = static_cast<uint32_t>(now.hour * 60U + now.minute);
-  return day_minutes / this->screensaver_refresh_minutes_;
+  return day_minutes / this->screensaver_refresh_minutes_();
 }
 
 bool PaperMonoActivityComponent::parse_quiet_time_(const std::string &value, int *minutes_out) const {
@@ -300,8 +304,8 @@ bool PaperMonoActivityComponent::parse_quiet_time_(const std::string &value, int
 bool PaperMonoActivityComponent::is_in_quiet_hours_() const {
   int quiet_start = -1;
   int quiet_end = -1;
-  if (!this->parse_quiet_time_(this->quiet_hours_start_, &quiet_start) ||
-      !this->parse_quiet_time_(this->quiet_hours_end_, &quiet_end)) {
+  if (!this->parse_quiet_time_(this->quiet_hours_start_value_(), &quiet_start) ||
+      !this->parse_quiet_time_(this->quiet_hours_end_value_(), &quiet_end)) {
     return false;
   }
   if (quiet_start == quiet_end) {
@@ -325,8 +329,8 @@ bool PaperMonoActivityComponent::is_in_quiet_hours_() const {
 uint32_t PaperMonoActivityComponent::seconds_until_quiet_hours_start_() const {
   int quiet_start = -1;
   int quiet_end = -1;
-  if (!this->parse_quiet_time_(this->quiet_hours_start_, &quiet_start) ||
-      !this->parse_quiet_time_(this->quiet_hours_end_, &quiet_end) || this->time_ == nullptr) {
+  if (!this->parse_quiet_time_(this->quiet_hours_start_value_(), &quiet_start) ||
+      !this->parse_quiet_time_(this->quiet_hours_end_value_(), &quiet_end) || this->time_ == nullptr) {
     return UINT32_MAX;
   }
   const ESPTime now = this->time_->now();
@@ -351,8 +355,8 @@ uint32_t PaperMonoActivityComponent::seconds_until_quiet_hours_start_() const {
 uint32_t PaperMonoActivityComponent::seconds_until_quiet_hours_end_() const {
   int quiet_start = -1;
   int quiet_end = -1;
-  if (!this->parse_quiet_time_(this->quiet_hours_start_, &quiet_start) ||
-      !this->parse_quiet_time_(this->quiet_hours_end_, &quiet_end) || this->time_ == nullptr) {
+  if (!this->parse_quiet_time_(this->quiet_hours_start_value_(), &quiet_start) ||
+      !this->parse_quiet_time_(this->quiet_hours_end_value_(), &quiet_end) || this->time_ == nullptr) {
     return 0;
   }
   const ESPTime now = this->time_->now();
@@ -735,6 +739,10 @@ void PaperMonoActivityComponent::process_shutdown_pending_() {
 }
 
 void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep_display) {
+  const ESPTime runtime_now = this->time_ != nullptr ? this->time_->now() : ESPTime();
+  ESP_LOGI(TAG, "Quiet hours runtime: start=%s end=%s now=%02d:%02d:%02d active=%s",
+           this->quiet_hours_start_value_().c_str(), this->quiet_hours_end_value_().c_str(), runtime_now.hour,
+           runtime_now.minute, runtime_now.second, this->is_in_quiet_hours_() ? "yes" : "no");
   if (this->pmu_ != nullptr) {
     this->pmu_->refresh_power_and_battery();
   }
@@ -742,7 +750,7 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
   const bool allow_partial = !this->in_controls_view_() &&
                              (this->ha_connection_state_ == nullptr || this->ha_connection_state_->value() != 0);
   ESP_LOGI(TAG, "Scheduler /%u: controls=%d ha_state=%d quiet_sleep=%d -> partial=%s",
-           this->screensaver_refresh_minutes_, this->in_controls_view_(),
+           this->screensaver_refresh_minutes_(), this->in_controls_view_(),
            this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1, quiet_sleep_display,
            allow_partial ? "yes" : "no");
 
@@ -789,6 +797,13 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
 }
 
 void PaperMonoActivityComponent::on_screensaver_tick() {
+  if (this->time_ != nullptr) {
+    const ESPTime now = this->time_->now();
+    const uint8_t interval = this->screensaver_refresh_minutes_();
+    if (now.is_valid() && (now.minute % interval) != 0) {
+      return;
+    }
+  }
   if (this->light_sleep_wake_recovery_ != nullptr && this->light_sleep_wake_recovery_->value()) {
     ESP_LOGD(TAG, "Scheduler tick skipped (light_sleep_wake_recovery active)");
     return;
@@ -937,7 +952,7 @@ bool PaperMonoActivityComponent::can_enter_light_sleep_() const {
 }
 
 uint64_t PaperMonoActivityComponent::compute_timer_wakeup_us_(LightSleepTimerReason *reason) const {
-  const uint32_t interval_seconds = static_cast<uint32_t>(this->screensaver_refresh_minutes_) * 60U;
+  const uint32_t interval_seconds = static_cast<uint32_t>(this->screensaver_refresh_minutes_()) * 60U;
   uint64_t refresh_us = static_cast<uint64_t>(interval_seconds) * 1000000ULL;
 
   if (this->time_ != nullptr) {
@@ -956,6 +971,10 @@ uint64_t PaperMonoActivityComponent::compute_timer_wakeup_us_(LightSleepTimerRea
 
   LightSleepTimerReason selected = LightSleepTimerReason::NORMAL_REFRESH;
   uint64_t timer_us = refresh_us;
+
+  ESP_LOGI(TAG, "Quiet hours runtime: start=%s end=%s active=%s (light-sleep timer evaluation)",
+           this->quiet_hours_start_value_().c_str(), this->quiet_hours_end_value_().c_str(),
+           this->is_in_quiet_hours_() ? "yes" : "no");
 
   if (!this->is_in_quiet_hours_()) {
     const uint32_t quiet_start_seconds = this->seconds_until_quiet_hours_start_();
@@ -1020,6 +1039,16 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
     return;
   }
 
+  if (gpio_get_level(TOUCH_WAKE_GPIO) == 0) {
+    const uint32_t now = millis();
+    if (now - this->last_gpio_block_log_ms_ >= GPIO_BLOCK_LOG_INTERVAL_MS) {
+      ESP_LOGI(TAG, "Light sleep deferred: touch IRQ (GPIO4) still LOW");
+      this->last_gpio_block_log_ms_ = now;
+    }
+    this->light_sleep_pending_ = true;
+    return;
+  }
+
   this->light_sleep_pending_ = false;
 
   LightSleepTimerReason timer_reason = LightSleepTimerReason::NORMAL_REFRESH;
@@ -1029,10 +1058,14 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
   this->disable_wifi_for_sleep_();
 
   const m5pm1::LightSleepWakeupArmResult arm = this->pmu_->arm_light_sleep_wakeup(timer_us);
+  const esp_err_t touch_gpio_wake = gpio_wakeup_enable(TOUCH_WAKE_GPIO, GPIO_INTR_LOW_LEVEL);
+  const esp_err_t touch_gpio_src =
+      touch_gpio_wake == ESP_OK ? esp_sleep_enable_gpio_wakeup() : touch_gpio_wake;
   ESP_LOGI(TAG, "Light sleep arm:");
   ESP_LOGI(TAG, "  timer=%llus reason=%s", timer_us / 1000000ULL,
            timer_reason == LightSleepTimerReason::QUIET_HOURS_START ? "QUIET_HOURS_START" : "NORMAL_REFRESH");
   ESP_LOGI(TAG, "  ext1_gpio1=%s", esp_err_to_name(arm.ext1));
+  ESP_LOGI(TAG, "  gpio4_touch_wake=%s", esp_err_to_name(touch_gpio_src));
   ESP_LOGI(TAG, "  gpio1_level=%s", arm.gpio1_high ? "HIGH" : "LOW");
   if (arm.disable_timer != ESP_OK || arm.disable_gpio != ESP_OK || arm.disable_ext1 != ESP_OK ||
       arm.gpio_disable != ESP_OK) {
@@ -1040,8 +1073,9 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
              esp_err_to_name(arm.disable_gpio), esp_err_to_name(arm.disable_ext1), esp_err_to_name(arm.gpio_disable));
   }
 
-  if (!arm_result_ok_(arm)) {
+  if (!arm_result_ok_(arm) || touch_gpio_src != ESP_OK) {
     ESP_LOGE(TAG, "Light sleep arm failed; aborting entry");
+    gpio_wakeup_disable(TOUCH_WAKE_GPIO);
     this->pmu_->restore_after_light_sleep();
     this->enable_wifi_after_wake_(false);
     this->light_sleep_pending_ = true;
@@ -1051,6 +1085,7 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
   ESP_LOGI(TAG, "Calling esp_light_sleep_start()");
   const esp_err_t sleep_err = esp_light_sleep_start();
   ESP_LOGI(TAG, "esp_light_sleep_start returned: %s", esp_err_to_name(sleep_err));
+  gpio_wakeup_disable(TOUCH_WAKE_GPIO);
   this->pmu_->restore_after_light_sleep();
 
   if (sleep_err != ESP_OK) {
@@ -1071,8 +1106,16 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
 void PaperMonoActivityComponent::handle_light_sleep_wake_(esp_sleep_wakeup_cause_t cause,
                                                           LightSleepTimerReason timer_reason) {
   if (cause == ESP_SLEEP_WAKEUP_TIMER) {
-    if (timer_reason == LightSleepTimerReason::QUIET_HOURS_START) {
-      ESP_LOGI(TAG, "Wake from light sleep: quiet_hours_start -> PMIC shutdown path");
+    const bool quiet_hours_now = this->is_in_quiet_hours_();
+    if (timer_reason == LightSleepTimerReason::QUIET_HOURS_START || quiet_hours_now) {
+      if (quiet_hours_now) {
+        const ESPTime runtime_now = this->time_ != nullptr ? this->time_->now() : ESPTime();
+        ESP_LOGI(TAG, "Quiet hours reached after light-sleep timer wake: start=%s end=%s now=%02d:%02d:%02d",
+                 this->quiet_hours_start_value_().c_str(), this->quiet_hours_end_value_().c_str(),
+                 runtime_now.hour, runtime_now.minute, runtime_now.second);
+      } else {
+        ESP_LOGI(TAG, "Wake from light sleep: quiet_hours_start -> PMIC shutdown path");
+      }
       this->request_quiet_hours_shutdown_refresh_();
       return;
     }
@@ -1082,7 +1125,14 @@ void PaperMonoActivityComponent::handle_light_sleep_wake_(esp_sleep_wakeup_cause
     return;
   }
 
-  if (cause == ESP_SLEEP_WAKEUP_GPIO || cause == ESP_SLEEP_WAKEUP_EXT1) {
+  if (cause == ESP_SLEEP_WAKEUP_GPIO) {
+    ESP_LOGI(TAG, "Light sleep wake cause: TOUCH");
+    this->enable_wifi_after_wake_(false);
+    this->report_touch();
+    return;
+  }
+
+  if (cause == ESP_SLEEP_WAKEUP_EXT1) {
     this->enable_wifi_after_wake_(false);
     const bool motion = this->pmu_->process_pending_irq();
     if (motion) {
@@ -1132,7 +1182,7 @@ void PaperMonoActivityComponent::apply_frontlight_(bool on, ActivitySource sourc
   }
 
   if (on) {
-    this->pmu_->set_frontlight_level(this->on_brightness_percent_);
+    this->pmu_->set_frontlight_level(this->on_brightness_percent_());
     this->frontlight_on_ = true;
     if (source == ActivitySource::MOTION) {
       ESP_LOGI(TAG, "Frontlight: ON (activity=motion)");

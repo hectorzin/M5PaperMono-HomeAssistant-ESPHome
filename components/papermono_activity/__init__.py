@@ -23,6 +23,8 @@ CONF_LIGHT_SLEEP_WAKE_RECOVERY = "light_sleep_wake_recovery"
 CONF_QUIET_HOURS_SLEEP_DISPLAY = "quiet_hours_sleep_display"
 CONF_QUIET_HOURS_USER_OVERRIDE = "quiet_hours_user_override"
 CONF_BATTERY_DISPLAY_LEVEL = "battery_display_level"
+CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS = "frontlight_default_brightness"
+CONF_FRONTLIGHT_TIMEOUT_SECONDS = "frontlight_timeout_seconds"
 
 papermono_activity_ns = cg.esphome_ns.namespace("papermono_activity")
 PaperMonoActivityComponent = papermono_activity_ns.class_("PaperMonoActivityComponent", cg.Component)
@@ -56,11 +58,11 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_QUIET_HOURS_SLEEP_DISPLAY): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_USER_OVERRIDE): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_BATTERY_DISPLAY_LEVEL): cv.use_id(globals.GlobalsComponent),
-        cv.Optional(CONF_TIMEOUT, default="30s"): cv.positive_time_period_milliseconds,
-        cv.Optional(CONF_ON_BRIGHTNESS, default=30): cv.int_range(min=1, max=100),
-        cv.Optional(CONF_SCREENSAVER_REFRESH_MINUTES, default=5): validate_screensaver_refresh_minutes,
-        cv.Optional(CONF_QUIET_HOURS_START, default="00:00"): validate_quiet_hours_time,
-        cv.Optional(CONF_QUIET_HOURS_END, default="08:00"): validate_quiet_hours_time,
+        cv.Required(CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS): cv.use_id(globals.GlobalsComponent),
+        cv.Required(CONF_FRONTLIGHT_TIMEOUT_SECONDS): cv.use_id(globals.GlobalsComponent),
+        cv.Required(CONF_SCREENSAVER_REFRESH_MINUTES): cv.use_id(globals.GlobalsComponent),
+        cv.Required(CONF_QUIET_HOURS_START): cv.use_id(globals.GlobalsComponent),
+        cv.Required(CONF_QUIET_HOURS_END): cv.use_id(globals.GlobalsComponent),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -79,6 +81,11 @@ async def to_code(config):
     quiet_hours_sleep_display = await cg.get_variable(config[CONF_QUIET_HOURS_SLEEP_DISPLAY])
     quiet_hours_user_override = await cg.get_variable(config[CONF_QUIET_HOURS_USER_OVERRIDE])
     battery_display_level = await cg.get_variable(config[CONF_BATTERY_DISPLAY_LEVEL])
+    frontlight_default_brightness = await cg.get_variable(config[CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS])
+    frontlight_timeout_seconds = await cg.get_variable(config[CONF_FRONTLIGHT_TIMEOUT_SECONDS])
+    screensaver_refresh_minutes = await cg.get_variable(config[CONF_SCREENSAVER_REFRESH_MINUTES])
+    quiet_hours_start = await cg.get_variable(config[CONF_QUIET_HOURS_START])
+    quiet_hours_end = await cg.get_variable(config[CONF_QUIET_HOURS_END])
     cg.add(var.set_m5pm1(pmu))
     cg.add(var.set_rtc(rtc))
     cg.add(var.set_display(display))
@@ -90,8 +97,8 @@ async def to_code(config):
     cg.add(var.set_quiet_hours_sleep_display(quiet_hours_sleep_display))
     cg.add(var.set_quiet_hours_user_override(quiet_hours_user_override))
     cg.add(var.set_battery_display_level(battery_display_level))
-    cg.add(var.set_timeout_ms(config[CONF_TIMEOUT]))
-    cg.add(var.set_on_brightness_percent(config[CONF_ON_BRIGHTNESS]))
-    cg.add(var.set_screensaver_refresh_minutes(config[CONF_SCREENSAVER_REFRESH_MINUTES]))
-    cg.add(var.set_quiet_hours_start(config[CONF_QUIET_HOURS_START]))
-    cg.add(var.set_quiet_hours_end(config[CONF_QUIET_HOURS_END]))
+    cg.add(var.set_frontlight_default_brightness(frontlight_default_brightness))
+    cg.add(var.set_frontlight_timeout_seconds(frontlight_timeout_seconds))
+    cg.add(var.set_screensaver_refresh_minutes(screensaver_refresh_minutes))
+    cg.add(var.set_quiet_hours_start(quiet_hours_start))
+    cg.add(var.set_quiet_hours_end(quiet_hours_end))

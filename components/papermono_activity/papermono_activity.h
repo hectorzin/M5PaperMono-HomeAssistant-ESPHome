@@ -4,9 +4,12 @@
  */
 #pragma once
 
+#include <algorithm>
+
 #include "esp_sleep.h"
 
 #include "esphome/core/component.h"
+#include "esphome/components/globals/globals_component.h"
 
 namespace esphome::globals {
 template<typename T> class GlobalsComponent;
@@ -86,12 +89,22 @@ class PaperMonoActivityComponent : public Component {
     this->quiet_hours_user_override_ = value;
   }
   void set_battery_display_level(globals::GlobalsComponent<float> *value) { this->battery_display_level_ = value; }
+  void set_frontlight_default_brightness(globals::RestoringGlobalsComponent<int> *value) {
+    this->frontlight_default_brightness_ = value;
+  }
+  void set_frontlight_timeout_seconds(globals::RestoringGlobalsComponent<uint32_t> *value) {
+    this->frontlight_timeout_seconds_ = value;
+  }
+  void set_screensaver_refresh_minutes(globals::RestoringGlobalsComponent<int> *value) {
+    this->screensaver_refresh_minutes_global_ = value;
+  }
+  void set_quiet_hours_start(globals::RestoringGlobalStringComponent<std::string, 64> *value) {
+    this->quiet_hours_start_ = value;
+  }
+  void set_quiet_hours_end(globals::RestoringGlobalStringComponent<std::string, 64> *value) {
+    this->quiet_hours_end_ = value;
+  }
   void set_time(time::RealTimeClock *time) { this->time_ = time; }
-  void set_timeout_ms(uint32_t timeout_ms) { this->timeout_ms_ = timeout_ms; }
-  void set_on_brightness_percent(uint8_t percent) { this->on_brightness_percent_ = percent; }
-  void set_screensaver_refresh_minutes(uint8_t minutes) { this->screensaver_refresh_minutes_ = minutes; }
-  void set_quiet_hours_start(const std::string &value) { this->quiet_hours_start_ = value; }
-  void set_quiet_hours_end(const std::string &value) { this->quiet_hours_end_ = value; }
 
   void report_activity(ActivitySource source);
   void report_touch() { this->report_activity(ActivitySource::TOUCH); }
@@ -139,6 +152,29 @@ class PaperMonoActivityComponent : public Component {
   bool begin_quiet_hours_shutdown_();
   void request_quiet_hours_shutdown_refresh_();
   void cancel_shutdown_();
+  uint32_t timeout_ms_() const {
+    const uint32_t seconds = this->frontlight_timeout_seconds_ != nullptr ? this->frontlight_timeout_seconds_->value() : 30U;
+    return seconds == 0 ? 30000U : seconds * 1000U;
+  }
+  uint8_t on_brightness_percent_() const {
+    return this->frontlight_default_brightness_ != nullptr
+               ? static_cast<uint8_t>(std::clamp(this->frontlight_default_brightness_->value(), 0, 100))
+               : 30;
+  }
+  uint8_t screensaver_refresh_minutes_() const {
+    const int minutes = this->screensaver_refresh_minutes_global_ != nullptr
+                            ? this->screensaver_refresh_minutes_global_->value()
+                            : 5;
+    return minutes > 0 && minutes <= 60 && 60 % minutes == 0 ? static_cast<uint8_t>(minutes) : 5;
+  }
+  const std::string &quiet_hours_start_value_() const {
+    static const std::string fallback{"00:00"};
+    return this->quiet_hours_start_ != nullptr ? this->quiet_hours_start_->value() : fallback;
+  }
+  const std::string &quiet_hours_end_value_() const {
+    static const std::string fallback{"08:00"};
+    return this->quiet_hours_end_ != nullptr ? this->quiet_hours_end_->value() : fallback;
+  }
 
   m5pm1::M5PM1Component *pmu_{nullptr};
   papermono_rtc::PaperMonoRtcComponent *rtc_{nullptr};
@@ -151,11 +187,11 @@ class PaperMonoActivityComponent : public Component {
   globals::GlobalsComponent<bool> *quiet_hours_user_override_{nullptr};
   globals::GlobalsComponent<float> *battery_display_level_{nullptr};
   time::RealTimeClock *time_{nullptr};
-  std::string quiet_hours_start_{"00:00"};
-  std::string quiet_hours_end_{"08:00"};
-  uint32_t timeout_ms_{30000};
-  uint8_t on_brightness_percent_{30};
-  uint8_t screensaver_refresh_minutes_{5};
+  globals::RestoringGlobalsComponent<int> *frontlight_default_brightness_{nullptr};
+  globals::RestoringGlobalsComponent<uint32_t> *frontlight_timeout_seconds_{nullptr};
+  globals::RestoringGlobalsComponent<int> *screensaver_refresh_minutes_global_{nullptr};
+  globals::RestoringGlobalStringComponent<std::string, 64> *quiet_hours_start_{nullptr};
+  globals::RestoringGlobalStringComponent<std::string, 64> *quiet_hours_end_{nullptr};
   uint32_t last_activity_ms_{0};
   uint32_t sleep_eligible_activity_ms_{0};
   uint32_t shutdown_eligible_activity_ms_{0};

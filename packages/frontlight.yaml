@@ -12,11 +12,11 @@ papermono_activity:
   quiet_hours_sleep_display: quiet_hours_sleep_display
   quiet_hours_user_override: quiet_hours_user_override
   battery_display_level: paper_mono_battery_display_level
-  screensaver_refresh_minutes: ${screensaver_refresh_minutes}
-  quiet_hours_start: ${quiet_hours_start}
-  quiet_hours_end: ${quiet_hours_end}
-  timeout: 30s
-  on_brightness: 30
+  frontlight_default_brightness: frontlight_default_brightness
+  frontlight_timeout_seconds: frontlight_timeout_seconds
+  screensaver_refresh_minutes: screensaver_refresh_minutes
+  quiet_hours_start: quiet_hours_start
+  quiet_hours_end: quiet_hours_end
 
 papermono_imu:
   id: papermono_imu_hub

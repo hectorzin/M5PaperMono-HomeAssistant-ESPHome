@@ -2,11 +2,14 @@
 # config/home_assistant.yaml; the packages below compose the stable firmware.
 substitutions:
   device_name: paper-mono
+  frontlight_default_brightness: "30"
+  frontlight_timeout_seconds: "30"
   screensaver_refresh_minutes: "5"
   quiet_hours_start: "00:00"
   quiet_hours_end: "08:00"
 
 packages:
+  runtime_config: !include packages/runtime_config.yaml
   core: !include packages/core.yaml
   connectivity: !include packages/connectivity.yaml
   hardware: !include packages/hardware.yaml

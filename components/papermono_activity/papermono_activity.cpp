@@ -74,6 +74,8 @@ static const char *power_source_to_string_(PowerTransitionSource source) {
       return "light_sleep_timer";
     case PowerTransitionSource::PERIODIC_WAKE:
       return "periodic_wake";
+    case PowerTransitionSource::HOME_ASSISTANT:
+      return "home_assistant";
     default:
       return "unknown";
   }
@@ -194,6 +196,7 @@ void PaperMonoActivityComponent::loop() {
 
 void PaperMonoActivityComponent::cancel_shutdown_() {
   this->shutdown_phase_ = ShutdownPhase::NONE;
+  this->manual_shutdown_wake_seconds_ = 0;
   if (this->quiet_hours_sleep_display_ != nullptr) {
     this->quiet_hours_sleep_display_->value() = false;
   }
@@ -216,6 +219,8 @@ void PaperMonoActivityComponent::cancel_light_sleep_() {
   this->light_sleep_pending_ = false;
   this->periodic_wake_phase_ = PeriodicWakePhase::NONE;
   this->periodic_wake_settle_start_ms_ = 0;
+  this->ha_manual_light_sleep_armed_ = false;
+  this->manual_light_wake_seconds_ = 0;
 }
 
 void PaperMonoActivityComponent::prepare_controls_exit_for_sleep_() {
@@ -480,6 +485,23 @@ uint32_t PaperMonoActivityComponent::seconds_until_quiet_hours_end_() const {
     return quiet_end_seconds - seconds_into_day;
   }
   return 0;
+}
+
+uint32_t PaperMonoActivityComponent::seconds_until_next_time_of_day_(int minutes_from_midnight) const {
+  if (minutes_from_midnight < 0 || minutes_from_midnight >= 24 * 60 || this->time_ == nullptr) {
+    return 0;
+  }
+  const ESPTime now = this->time_->now();
+  if (!now.is_valid()) {
+    return 0;
+  }
+
+  const uint32_t seconds_into_day = static_cast<uint32_t>(now.hour * 3600U + now.minute * 60U + now.second);
+  const uint32_t target_seconds = static_cast<uint32_t>(minutes_from_midnight) * 60U;
+  if (seconds_into_day < target_seconds) {
+    return target_seconds - seconds_into_day;
+  }
+  return (24U * 3600U) - seconds_into_day + target_seconds;
 }
 
 void PaperMonoActivityComponent::handle_boot_wake_source_() {
@@ -795,9 +817,13 @@ bool PaperMonoActivityComponent::begin_quiet_hours_shutdown_() {
     return false;
   }
 
-  const uint32_t sleep_seconds = this->seconds_until_quiet_hours_end_();
+  const bool manual_ha_shutdown =
+      this->pending_power_source_ == PowerTransitionSource::HOME_ASSISTANT && this->manual_shutdown_wake_seconds_ > 0;
+  const uint32_t sleep_seconds =
+      manual_ha_shutdown ? this->manual_shutdown_wake_seconds_ : this->seconds_until_quiet_hours_end_();
   if (sleep_seconds == 0) {
-    ESP_LOGW(TAG, "Quiet-hours shutdown skipped: already past quiet_hours_end");
+    ESP_LOGW(TAG, "Quiet-hours shutdown skipped: %s",
+             manual_ha_shutdown ? "unable to compute manual wake_at" : "already past quiet_hours_end");
     this->cancel_shutdown_();
     return false;
   }
@@ -826,16 +852,19 @@ bool PaperMonoActivityComponent::begin_quiet_hours_shutdown_() {
     this->cancel_shutdown_();
     return false;
   }
-  ESP_LOGI(TAG, "RTC timer armed for quiet_hours_end in %u s (programmed %u ms)", sleep_seconds, programmed_ms);
+  ESP_LOGI(TAG, "RTC timer armed for %s in %u s (programmed %u ms)",
+           manual_ha_shutdown ? "manual wake_at" : "quiet_hours_end", sleep_seconds, programmed_ms);
 
+  // M5PM1 shutdown wake: RTC (GPIO0), BMI270 motion (M5PM1 GPIO4), POWER button.
+  // ESP32 touch does not apply — the ESP32 rail is off during PMIC shutdown.
   if (!this->pmu_->configure_shutdown_wake_gpio0_falling()) {
-    ESP_LOGE(TAG, "Quiet-hours shutdown aborted: M5PM1 GPIO0 wake config failed");
+    ESP_LOGE(TAG, "Quiet-hours shutdown aborted: M5PM1 GPIO0 (RTC) wake config failed");
     this->rtc_->disable_irq();
     this->cancel_shutdown_();
     return false;
   }
   if (!this->pmu_->configure_shutdown_wake_gpio4_falling()) {
-    ESP_LOGE(TAG, "Quiet-hours shutdown aborted: M5PM1 GPIO4 wake config failed");
+    ESP_LOGE(TAG, "Quiet-hours shutdown aborted: M5PM1 GPIO4 (motion) wake config failed");
     this->rtc_->disable_irq();
     this->cancel_shutdown_();
     return false;
@@ -868,6 +897,8 @@ bool PaperMonoActivityComponent::begin_quiet_hours_shutdown_() {
     this->cancel_shutdown_();
     return false;
   }
+
+  this->manual_shutdown_wake_seconds_ = 0;
 
   while (true) {
     delay(1000);
@@ -992,8 +1023,54 @@ void PaperMonoActivityComponent::on_screensaver_tick() {
   this->run_screensaver_periodic_tick_(quiet_sleep_display);
 }
 
+void PaperMonoActivityComponent::request_sleep_now(const std::string &wake_at) {
+  this->ha_manual_light_sleep_armed_ = false;
+  this->manual_light_wake_seconds_ = 0;
+
+  if (!wake_at.empty()) {
+    int wake_minutes = -1;
+    if (!this->parse_quiet_time_(wake_at, &wake_minutes)) {
+      ESP_LOGW(TAG, "sleep_now rejected: invalid wake_at '%s' (expected HH:MM)", wake_at.c_str());
+      return;
+    }
+    const uint32_t seconds = this->seconds_until_next_time_of_day_(wake_minutes);
+    if (seconds == 0) {
+      ESP_LOGW(TAG, "sleep_now rejected: unable to compute wake_at '%s'", wake_at.c_str());
+      return;
+    }
+    this->manual_light_wake_seconds_ = seconds;
+    ESP_LOGI(TAG, "sleep_now: manual wake_at=%s in %u s", wake_at.c_str(), seconds);
+  }
+
+  this->ha_manual_light_sleep_armed_ = true;
+  this->request_light_sleep_(PowerTransitionSource::HOME_ASSISTANT);
+}
+
+void PaperMonoActivityComponent::request_shutdown_until(const std::string &wake_at) {
+  if (wake_at.empty()) {
+    ESP_LOGW(TAG, "shutdown_until rejected: wake_at is required");
+    return;
+  }
+
+  int wake_minutes = -1;
+  if (!this->parse_quiet_time_(wake_at, &wake_minutes)) {
+    ESP_LOGW(TAG, "shutdown_until rejected: invalid wake_at '%s' (expected HH:MM)", wake_at.c_str());
+    return;
+  }
+  const uint32_t seconds = this->seconds_until_next_time_of_day_(wake_minutes);
+  if (seconds == 0) {
+    ESP_LOGW(TAG, "shutdown_until rejected: unable to compute wake_at '%s'", wake_at.c_str());
+    return;
+  }
+
+  this->manual_shutdown_wake_seconds_ = seconds;
+  ESP_LOGI(TAG, "shutdown_until: wake_at=%s in %u s", wake_at.c_str(), seconds);
+  this->request_quiet_hours_shutdown_(PowerTransitionSource::HOME_ASSISTANT);
+}
+
 void PaperMonoActivityComponent::request_light_sleep_(PowerTransitionSource source) {
-  if (this->is_in_quiet_hours_()) {
+  if (!(source == PowerTransitionSource::HOME_ASSISTANT && this->ha_manual_light_sleep_armed_) &&
+      this->is_in_quiet_hours_()) {
     this->request_quiet_hours_shutdown_(source);
     return;
   }
@@ -1141,6 +1218,13 @@ bool PaperMonoActivityComponent::can_enter_light_sleep_() const {
 }
 
 uint64_t PaperMonoActivityComponent::compute_timer_wakeup_us_(LightSleepTimerReason *reason) const {
+  if (this->ha_manual_light_sleep_armed_ && this->manual_light_wake_seconds_ > 0) {
+    if (reason != nullptr) {
+      *reason = LightSleepTimerReason::NORMAL_REFRESH;
+    }
+    return static_cast<uint64_t>(this->manual_light_wake_seconds_) * 1000000ULL;
+  }
+
   const uint32_t interval_seconds = static_cast<uint32_t>(this->screensaver_refresh_minutes_()) * 60U;
   uint64_t refresh_us = static_cast<uint64_t>(interval_seconds) * 1000000ULL;
 
@@ -1165,7 +1249,7 @@ uint64_t PaperMonoActivityComponent::compute_timer_wakeup_us_(LightSleepTimerRea
            this->quiet_hours_start_value_().c_str(), this->quiet_hours_end_value_().c_str(),
            this->is_in_quiet_hours_() ? "yes" : "no");
 
-  if (!this->is_in_quiet_hours_()) {
+  if (!this->ha_manual_light_sleep_armed_ && !this->is_in_quiet_hours_()) {
     const uint32_t quiet_start_seconds = this->seconds_until_quiet_hours_start_();
     if (quiet_start_seconds != UINT32_MAX) {
       const uint64_t quiet_us = static_cast<uint64_t>(quiet_start_seconds) * 1000000ULL;
@@ -1212,7 +1296,8 @@ void PaperMonoActivityComponent::enable_wifi_after_wake_(bool timer_wake) {
 }
 
 void PaperMonoActivityComponent::enter_light_sleep_() {
-  if (this->is_in_quiet_hours_()) {
+  if (!(this->pending_power_source_ == PowerTransitionSource::HOME_ASSISTANT && this->ha_manual_light_sleep_armed_) &&
+      this->is_in_quiet_hours_()) {
     ESP_LOGI(TAG, "Quiet hours active at sleep entry; routing to PMIC shutdown");
     this->light_sleep_pending_ = false;
     this->request_quiet_hours_shutdown_(this->pending_power_source_);
@@ -1250,6 +1335,7 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
   LightSleepTimerReason timer_reason = LightSleepTimerReason::NORMAL_REFRESH;
   const uint64_t timer_us = this->compute_timer_wakeup_us_(&timer_reason);
   this->light_sleep_timer_reason_ = timer_reason;
+  this->manual_light_wake_seconds_ = 0;
 
   this->disable_wifi_for_sleep_();
 
@@ -1302,7 +1388,16 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
 
 void PaperMonoActivityComponent::handle_light_sleep_wake_(esp_sleep_wakeup_cause_t cause,
                                                           LightSleepTimerReason timer_reason) {
+  const bool manual_ha_light_sleep = this->ha_manual_light_sleep_armed_;
+  this->ha_manual_light_sleep_armed_ = false;
+
   if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+    if (manual_ha_light_sleep) {
+      ESP_LOGI(TAG, "Wake from light sleep: HA manual timer");
+      this->enable_wifi_after_wake_(true);
+      return;
+    }
+
     const bool quiet_hours_now = this->is_in_quiet_hours_();
     if (timer_reason == LightSleepTimerReason::QUIET_HOURS_START || quiet_hours_now) {
       if (quiet_hours_now) {

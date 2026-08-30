@@ -91,6 +91,19 @@ number:
           ESP_LOGI("runtime_config", "Runtime config HA change: parameter=sleep_timeout old=%u new=%u stored=%u",
                    (unsigned) old_value, (unsigned) x, (unsigned) id(sleep_timeout_seconds));
 
+select:
+  - platform: template
+    name: Paper Mono Refresh Interval
+    id: paper_mono_refresh_interval
+    options: ["1", "2", "3", "4", "5", "6", "10", "12", "15", "20", "30", "60"]
+    optimistic: true
+    set_action:
+      - lambda: |-
+          const int old_value = id(screensaver_refresh_minutes);
+          id(screensaver_refresh_minutes) = (int) atoi(x.c_str());
+          ESP_LOGI("runtime_config", "Runtime config HA change: parameter=refresh_interval old=%d new=%d stored=%d",
+                   old_value, id(screensaver_refresh_minutes), id(screensaver_refresh_minutes));
+
 text:
   - platform: template
     name: Paper Mono Quiet Hours Start
@@ -126,19 +139,6 @@ text:
             ESP_LOGI("runtime_config", "Runtime config HA change: parameter=quiet_end old='%s' new='%s' stored='%s'",
                      old_value.c_str(), x.c_str(), id(quiet_hours_end).c_str());
           }
-
-select:
-  - platform: template
-    name: Paper Mono Refresh Interval
-    id: paper_mono_refresh_interval
-    options: ["1", "2", "3", "4", "5", "6", "10", "12", "15", "20", "30", "60"]
-    optimistic: true
-    set_action:
-      - lambda: |-
-          const int old_value = id(screensaver_refresh_minutes);
-          id(screensaver_refresh_minutes) = (int) atoi(x.c_str());
-          ESP_LOGI("runtime_config", "Runtime config HA change: parameter=refresh_interval old=%d new=%d stored=%d",
-                   old_value, id(screensaver_refresh_minutes), id(screensaver_refresh_minutes));
 
 button:
   - platform: template

@@ -1,6 +1,19 @@
 # Native ESPHome API. The api.connected condition in the Home Assistant runtime
 # package is the authoritative connection signal.
 api:
+  actions:
+    - action: sleep_now
+      variables:
+        wake_at: string
+      then:
+        - lambda: |-
+            id(papermono_activity_hub).request_sleep_now(wake_at);
+    - action: shutdown_until
+      variables:
+        wake_at: string
+      then:
+        - lambda: |-
+            id(papermono_activity_hub).request_shutdown_until(wake_at);
 
 wifi:
   ssid: !secret wifi_ssid

@@ -71,6 +71,7 @@ enum class PowerTransitionSource : uint8_t {
   SCHEDULER = 1,
   LIGHT_SLEEP_TIMER = 2,
   PERIODIC_WAKE = 3,
+  HOME_ASSISTANT = 4,
 };
 
 enum class PmicHwRecoveryPhase : uint8_t {
@@ -138,6 +139,9 @@ class PaperMonoActivityComponent : public Component {
   // Clock-aligned timer handling for quiet-hours and periodic light-sleep wakes.
   void on_screensaver_tick();
 
+  void request_sleep_now(const std::string &wake_at);
+  void request_shutdown_until(const std::string &wake_at);
+
  protected:
   void exit_controls_(bool preserve_sleep_pending);
   void apply_frontlight_(bool on, ActivitySource source);
@@ -169,6 +173,7 @@ class PaperMonoActivityComponent : public Component {
   bool is_in_quiet_hours_() const;
   uint32_t seconds_until_quiet_hours_start_() const;
   uint32_t seconds_until_quiet_hours_end_() const;
+  uint32_t seconds_until_next_time_of_day_(int minutes_from_midnight) const;
   void handle_boot_wake_source_();
   void sync_battery_display_for_shutdown_();
   void process_pmic_hw_recovery_();
@@ -253,6 +258,9 @@ class PaperMonoActivityComponent : public Component {
   ShutdownPhase shutdown_phase_{ShutdownPhase::NONE};
   PowerTransitionSource pending_power_source_{PowerTransitionSource::SLEEP_TIMEOUT};
   LightSleepTimerReason light_sleep_timer_reason_{LightSleepTimerReason::NORMAL_REFRESH};
+  bool ha_manual_light_sleep_armed_{false};
+  uint32_t manual_light_wake_seconds_{0};
+  uint32_t manual_shutdown_wake_seconds_{0};
   uint32_t last_motion_log_ms_{0};
 };
 

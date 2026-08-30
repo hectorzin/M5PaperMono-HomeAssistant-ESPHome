@@ -31,6 +31,14 @@ namespace esphome::papermono_rtc {
 class PaperMonoRtcComponent;
 }
 
+namespace esphome::sensor {
+class Sensor;
+}
+
+namespace esphome::text_sensor {
+class TextSensor;
+}
+
 namespace esphome::time {
 class RealTimeClock;
 }
@@ -58,6 +66,13 @@ enum class ShutdownPhase : uint8_t {
   WAIT_DISPLAY = 1,
 };
 
+enum class PowerTransitionSource : uint8_t {
+  SLEEP_TIMEOUT = 0,
+  SCHEDULER = 1,
+  LIGHT_SLEEP_TIMER = 2,
+  PERIODIC_WAKE = 3,
+};
+
 enum class PmicHwRecoveryPhase : uint8_t {
   NONE = 0,
   WAIT_M5IOE1 = 1,
@@ -78,6 +93,9 @@ class PaperMonoActivityComponent : public Component {
   void set_display(papermono_epaper::PaperMonoEpaper *display) { this->display_ = display; }
   void set_controls_view(globals::GlobalsComponent<bool> *controls_view) { this->controls_view_ = controls_view; }
   void set_ha_connection_state(globals::GlobalsComponent<int> *state) { this->ha_connection_state_ = state; }
+  void set_ha_weather_state(text_sensor::TextSensor *sensor) { this->ha_weather_state_ = sensor; }
+  void set_ha_indoor_temperature(sensor::Sensor *sensor) { this->ha_indoor_temperature_ = sensor; }
+  void set_ha_indoor_humidity(sensor::Sensor *sensor) { this->ha_indoor_humidity_ = sensor; }
   void set_wifi_transition_pending(globals::GlobalsComponent<bool> *pending) { this->wifi_transition_pending_ = pending; }
   void set_light_sleep_wake_recovery(globals::GlobalsComponent<bool> *recovery) {
     this->light_sleep_wake_recovery_ = recovery;
@@ -132,10 +150,13 @@ class PaperMonoActivityComponent : public Component {
   void cancel_periodic_wake_recovery_();
   void clear_wake_recovery_flag_();
   void run_screensaver_periodic_tick_(bool quiet_sleep_display);
-  void arm_light_sleep_after_refresh_();
+  void request_light_sleep_(PowerTransitionSource source);
+  void request_quiet_hours_shutdown_(PowerTransitionSource source);
   bool can_enter_light_sleep_() const;
   bool can_begin_shutdown_() const;
   bool is_network_api_ready_() const;
+  bool is_home_assistant_connected_() const;
+  bool is_home_assistant_data_ready_() const;
   void process_periodic_wake_recovery_();
   void process_shutdown_pending_();
   void disable_wifi_for_sleep_();
@@ -154,8 +175,8 @@ class PaperMonoActivityComponent : public Component {
   void complete_pmic_wake_hardware_recovery();
   void begin_pmic_ha_final_full_recovery_();
   bool begin_quiet_hours_shutdown_();
-  void request_quiet_hours_shutdown_refresh_(const char *source);
   void cancel_shutdown_();
+  void prepare_controls_exit_for_sleep_();
   uint32_t timeout_ms_() const {
     const uint32_t seconds = this->frontlight_timeout_seconds_ != nullptr ? this->frontlight_timeout_seconds_->value() : 30U;
     return seconds == 0 ? 30000U : seconds * 1000U;
@@ -189,6 +210,9 @@ class PaperMonoActivityComponent : public Component {
   papermono_epaper::PaperMonoEpaper *display_{nullptr};
   globals::GlobalsComponent<bool> *controls_view_{nullptr};
   globals::GlobalsComponent<int> *ha_connection_state_{nullptr};
+  text_sensor::TextSensor *ha_weather_state_{nullptr};
+  sensor::Sensor *ha_indoor_temperature_{nullptr};
+  sensor::Sensor *ha_indoor_humidity_{nullptr};
   globals::GlobalsComponent<bool> *wifi_transition_pending_{nullptr};
   globals::GlobalsComponent<bool> *light_sleep_wake_recovery_{nullptr};
   globals::GlobalsComponent<bool> *quiet_hours_sleep_display_{nullptr};
@@ -222,9 +246,12 @@ class PaperMonoActivityComponent : public Component {
   uint32_t pmic_hw_recovery_next_probe_ms_{0};
   bool pmic_hw_recovery_wait_logged_{false};
   bool pmic_ha_final_full_pending_{false};
+  bool pmic_ha_connection_logged_{false};
+  bool pmic_ha_data_ready_logged_{false};
   m5ioe1::M5IOE1Component *m5ioe1_{nullptr};
   PeriodicWakePhase periodic_wake_phase_{PeriodicWakePhase::NONE};
   ShutdownPhase shutdown_phase_{ShutdownPhase::NONE};
+  PowerTransitionSource pending_power_source_{PowerTransitionSource::SLEEP_TIMEOUT};
   LightSleepTimerReason light_sleep_timer_reason_{LightSleepTimerReason::NORMAL_REFRESH};
   uint32_t last_motion_log_ms_{0};
 };

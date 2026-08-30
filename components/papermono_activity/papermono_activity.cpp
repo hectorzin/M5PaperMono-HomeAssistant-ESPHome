@@ -13,6 +13,8 @@
 #include "esphome/components/m5pm1/m5pm1.h"
 #include "esphome/components/papermono_epaper/papermono_epaper.h"
 #include "esphome/components/papermono_rtc/papermono_rtc.h"
+#include "esphome/components/sensor/sensor.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/components/time/real_time_clock.h"
 #include "esphome/components/wifi/wifi_component.h"
 #include "esphome/core/log.h"
@@ -62,6 +64,21 @@ static bool arm_result_ok_(const m5pm1::LightSleepWakeupArmResult &arm) {
   return true;
 }
 
+static const char *power_source_to_string_(PowerTransitionSource source) {
+  switch (source) {
+    case PowerTransitionSource::SLEEP_TIMEOUT:
+      return "sleep_timeout";
+    case PowerTransitionSource::SCHEDULER:
+      return "scheduler";
+    case PowerTransitionSource::LIGHT_SLEEP_TIMER:
+      return "light_sleep_timer";
+    case PowerTransitionSource::PERIODIC_WAKE:
+      return "periodic_wake";
+    default:
+      return "unknown";
+  }
+}
+
 void PaperMonoActivityComponent::setup() {
   if (this->pmu_ == nullptr) {
     ESP_LOGE(TAG, "M5PM1 reference missing");
@@ -85,6 +102,7 @@ void PaperMonoActivityComponent::setup() {
   this->last_gpio_block_log_ms_ = 0;
   this->periodic_wake_recovery_timeout_logged_ = false;
   this->sleep_timeout_logged_ = false;
+  this->pending_power_source_ = PowerTransitionSource::SLEEP_TIMEOUT;
   this->light_sleep_timer_reason_ = LightSleepTimerReason::NORMAL_REFRESH;
 
   ESP_LOGI(TAG, "Activity setup: pmic_shutdown=%s", this->pmu_->is_boot_from_pmic_shutdown() ? "yes" : "no");
@@ -135,31 +153,29 @@ void PaperMonoActivityComponent::loop() {
     this->light_sleep_wake_recovery_->value() = false;
   }
 
-  // A periodic refresh may arm sleep, but it must not be the trigger for the
-  // initial transition.  Once the inactivity deadline expires, reuse the
-  // same pending/eligibility and entry path used by periodic refreshes.
-  if (!this->light_sleep_pending_ && this->last_activity_ms_ != 0 &&
-      this->periodic_wake_phase_ == PeriodicWakePhase::NONE) {
+  // Sleep Timeout is the only trigger for an initial power transition while
+  // awake. Refresh Interval only re-arms light sleep after a periodic tick.
+  if (!this->light_sleep_pending_ && this->shutdown_phase_ == ShutdownPhase::NONE &&
+      this->last_activity_ms_ != 0 && this->periodic_wake_phase_ == PeriodicWakePhase::NONE) {
     const uint32_t now = millis();
     const uint32_t inactive_ms = now - this->last_activity_ms_;
     const uint32_t configured_sleep_timeout_ms = this->sleep_timeout_ms_();
     if (inactive_ms >= configured_sleep_timeout_ms) {
-      this->sleep_eligible_activity_ms_ = this->last_activity_ms_;
-      this->light_sleep_pending_ = true;
       if (!this->sleep_timeout_logged_) {
         ESP_LOGI(TAG, "Sleep timeout reached after %u s inactivity", configured_sleep_timeout_ms / 1000U);
         this->sleep_timeout_logged_ = true;
+      }
+      if (this->is_in_quiet_hours_()) {
+        this->request_quiet_hours_shutdown_(PowerTransitionSource::SLEEP_TIMEOUT);
+      } else {
+        this->request_light_sleep_(PowerTransitionSource::SLEEP_TIMEOUT);
       }
     }
   }
 
   if (this->light_sleep_pending_ && this->in_controls_view_() &&
       this->last_activity_ms_ == this->sleep_eligible_activity_ms_) {
-    if (this->controls_view_ != nullptr) {
-      this->controls_view_->value() = false;
-    }
-    ESP_LOGI("control", "controls -> screensaver");
-    this->exit_controls_(true);
+    this->prepare_controls_exit_for_sleep_();
   }
 
   if (this->light_sleep_pending_ && this->can_enter_light_sleep_()) {
@@ -202,6 +218,17 @@ void PaperMonoActivityComponent::cancel_light_sleep_() {
   this->periodic_wake_settle_start_ms_ = 0;
 }
 
+void PaperMonoActivityComponent::prepare_controls_exit_for_sleep_() {
+  if (!this->in_controls_view_()) {
+    return;
+  }
+  if (this->controls_view_ != nullptr) {
+    this->controls_view_->value() = false;
+  }
+  ESP_LOGI("control", "controls -> screensaver");
+  this->exit_controls_(true);
+}
+
 bool PaperMonoActivityComponent::in_controls_view_() const {
   return this->controls_view_ != nullptr && this->controls_view_->value();
 }
@@ -217,6 +244,43 @@ bool PaperMonoActivityComponent::is_network_api_ready_() const {
     return false;
   }
 #endif
+  return true;
+}
+
+bool PaperMonoActivityComponent::is_home_assistant_connected_() const {
+#ifdef USE_API
+  if (api::global_api_server == nullptr) {
+    return false;
+  }
+  for (const auto &client : api::global_api_server->active_clients()) {
+    if (client == nullptr || !client->is_authenticated()) {
+      continue;
+    }
+    const char *name = client->get_name();
+    if (name != nullptr && std::strncmp(name, "Home Assistant", 14) == 0) {
+      return true;
+    }
+  }
+#endif
+  return false;
+}
+
+bool PaperMonoActivityComponent::is_home_assistant_data_ready_() const {
+  if (!this->is_home_assistant_connected_()) {
+    return false;
+  }
+  if (this->time_ == nullptr || !this->time_->now().is_valid()) {
+    return false;
+  }
+  if (this->ha_weather_state_ == nullptr || !this->ha_weather_state_->has_state()) {
+    return false;
+  }
+  if (this->ha_indoor_temperature_ == nullptr || !this->ha_indoor_temperature_->has_state()) {
+    return false;
+  }
+  if (this->ha_indoor_humidity_ == nullptr || !this->ha_indoor_humidity_->has_state()) {
+    return false;
+  }
   return true;
 }
 
@@ -503,6 +567,16 @@ void PaperMonoActivityComponent::begin_pmic_wake_hardware_recovery(m5ioe1::M5IOE
   if (this->pmic_hw_recovery_phase_ != PmicHwRecoveryPhase::NONE) {
     return;
   }
+  ESP_LOGI(TAG, "PMIC recovery begin: wake_source=%s",
+           this->pmu_->get_boot_wake_source() == m5pm1::Pm5BootWakeSource::RTC_GPIO0
+               ? "RTC"
+               : this->pmu_->get_boot_wake_source() == m5pm1::Pm5BootWakeSource::MOTION_GPIO4
+                     ? "MOTION"
+                     : this->pmu_->get_boot_wake_source() == m5pm1::Pm5BootWakeSource::POWER_BUTTON
+                           ? "POWER_BUTTON"
+                           : this->pmu_->get_boot_wake_source() == m5pm1::Pm5BootWakeSource::NORMAL
+                                 ? "NORMAL"
+                                 : "UNKNOWN");
   this->pmic_ha_final_full_pending_ = true;
   if (this->light_sleep_wake_recovery_ != nullptr) {
     this->light_sleep_wake_recovery_->value() = true;
@@ -608,8 +682,10 @@ void PaperMonoActivityComponent::begin_pmic_ha_final_full_recovery_() {
   }
   this->periodic_wake_started_ms_ = millis();
   this->periodic_wake_recovery_timeout_logged_ = false;
+  this->pmic_ha_connection_logged_ = false;
+  this->pmic_ha_data_ready_logged_ = false;
   this->periodic_wake_phase_ = PeriodicWakePhase::WAIT_API;
-  ESP_LOGI(TAG, "PMIC boot: mandatory FULL complete; awaiting HA API for final FULL");
+  ESP_LOGI(TAG, "PMIC boot: mandatory FULL complete; waiting for HA data");
 }
 
 void PaperMonoActivityComponent::complete_pmic_wake_hardware_recovery() {
@@ -643,13 +719,20 @@ void PaperMonoActivityComponent::sync_battery_display_for_shutdown_() {
   this->battery_display_level_->value() = rounded;
 }
 
-void PaperMonoActivityComponent::request_quiet_hours_shutdown_refresh_(const char *source) {
+void PaperMonoActivityComponent::request_quiet_hours_shutdown_(PowerTransitionSource source) {
+  ESP_LOGI(TAG, "Power transition request: source=%s target=QUIET_SHUTDOWN", power_source_to_string_(source));
+  if (this->shutdown_phase_ != ShutdownPhase::NONE) {
+    ESP_LOGI(TAG, "Quiet shutdown already in progress; ignoring duplicate request");
+    return;
+  }
+
+  ESP_LOGI(TAG, "Quiet shutdown begin: source=%s", power_source_to_string_(source));
   const bool quiet_sleep_display =
       this->quiet_hours_sleep_display_ != nullptr && this->quiet_hours_sleep_display_->value();
   const bool wake_recovery =
       this->light_sleep_wake_recovery_ != nullptr && this->light_sleep_wake_recovery_->value();
   ESP_LOGI(TAG, "Quiet shutdown context:");
-  ESP_LOGI(TAG, "  source=%s", source != nullptr ? source : "unknown");
+  ESP_LOGI(TAG, "  source=%s", power_source_to_string_(source));
   ESP_LOGI(TAG, "  quiet_sleep_display=%s", quiet_sleep_display ? "yes" : "no");
   ESP_LOGI(TAG, "  pmic_ha_final_full_pending=%s", this->pmic_ha_final_full_pending_ ? "yes" : "no");
   ESP_LOGI(TAG, "  ha_state=%d",
@@ -659,7 +742,9 @@ void PaperMonoActivityComponent::request_quiet_hours_shutdown_refresh_(const cha
     ESP_LOGI(TAG, "  shutdown_pending_marker=%s", this->pmu_->is_boot_shutdown_pending() ? "yes" : "no");
   }
 
+  this->pending_power_source_ = source;
   this->cancel_light_sleep_();
+  this->prepare_controls_exit_for_sleep_();
   this->disable_wifi_for_sleep_();
 
   if (this->quiet_hours_sleep_display_ != nullptr) {
@@ -862,7 +947,7 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
   }
 
   if (quiet_sleep_display) {
-    this->request_quiet_hours_shutdown_refresh_("scheduler");
+    this->request_quiet_hours_shutdown_(PowerTransitionSource::SCHEDULER);
     return;
   }
 
@@ -877,7 +962,7 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
     ESP_LOGD(TAG, "Quiet-hours override tick: staying awake until inactive aligned tick");
     return;
   }
-  this->arm_light_sleep_after_refresh_();
+  this->request_light_sleep_(PowerTransitionSource::SCHEDULER);
 }
 
 void PaperMonoActivityComponent::on_screensaver_tick() {
@@ -907,7 +992,15 @@ void PaperMonoActivityComponent::on_screensaver_tick() {
   this->run_screensaver_periodic_tick_(quiet_sleep_display);
 }
 
-void PaperMonoActivityComponent::arm_light_sleep_after_refresh_() {
+void PaperMonoActivityComponent::request_light_sleep_(PowerTransitionSource source) {
+  if (this->is_in_quiet_hours_()) {
+    this->request_quiet_hours_shutdown_(source);
+    return;
+  }
+
+  ESP_LOGI(TAG, "Power transition request: source=%s target=LIGHT_SLEEP", power_source_to_string_(source));
+  this->pending_power_source_ = source;
+  this->prepare_controls_exit_for_sleep_();
   this->sleep_eligible_activity_ms_ = this->last_activity_ms_;
   this->light_sleep_pending_ = true;
 }
@@ -929,8 +1022,8 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
     }
   }
 
-  if (!this->is_network_api_ready_()) {
-    if (!this->pmic_ha_final_full_pending_) {
+  if (!this->pmic_ha_final_full_pending_) {
+    if (!this->is_network_api_ready_()) {
       const uint32_t elapsed = millis() - this->periodic_wake_started_ms_;
       if (this->periodic_wake_started_ms_ != 0 && elapsed >= PERIODIC_WAKE_RECOVERY_TIMEOUT_MS) {
         if (!this->periodic_wake_recovery_timeout_logged_) {
@@ -941,27 +1034,37 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
         this->periodic_wake_settle_start_ms_ = 0;
         this->periodic_wake_started_ms_ = 0;
         this->clear_wake_recovery_flag_();
-        this->sleep_eligible_activity_ms_ = this->last_activity_ms_;
-        this->light_sleep_pending_ = true;
+        this->request_light_sleep_(PowerTransitionSource::PERIODIC_WAKE);
         if (this->can_enter_light_sleep_()) {
           this->enter_light_sleep_();
         }
       }
+      return;
     }
-    return;
+  } else {
+    if (!this->pmic_ha_connection_logged_ && this->is_home_assistant_connected_()) {
+      ESP_LOGI(TAG, "HA connection established");
+      this->pmic_ha_connection_logged_ = true;
+    }
+    if (!this->is_home_assistant_data_ready_()) {
+      return;
+    }
+    if (!this->pmic_ha_data_ready_logged_) {
+      ESP_LOGI(TAG, "HA data ready");
+      this->pmic_ha_data_ready_logged_ = true;
+    }
   }
 
   this->periodic_wake_recovery_timeout_logged_ = false;
 
   if (this->periodic_wake_phase_ == PeriodicWakePhase::WAIT_API) {
-    if (this->pmic_ha_final_full_pending_) {
-      ESP_LOGI(TAG, "PMIC boot: HA API ready, settling state subscriptions");
-    } else {
+    if (!this->pmic_ha_final_full_pending_) {
       ESP_LOGI(TAG, "Periodic wake: API ready, settling HA states");
     }
     this->periodic_wake_settle_start_ms_ = millis();
     this->periodic_wake_phase_ = PeriodicWakePhase::SETTLE;
-    ESP_LOGI(TAG, "PMIC boot: HA settle start (%u ms)", HA_STATE_SETTLE_MS);
+    ESP_LOGI(TAG, "%s: HA settle start (%u ms)", this->pmic_ha_final_full_pending_ ? "PMIC boot" : "Periodic wake",
+             HA_STATE_SETTLE_MS);
     return;
   }
 
@@ -977,7 +1080,7 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
 
     if (this->pmic_ha_final_full_pending_) {
       ESP_LOGI(TAG, "PMIC boot: HA settle complete (%u ms); starting final FULL", elapsed);
-      if (this->ha_connection_state_ != nullptr && this->is_network_api_ready_()) {
+      if (this->ha_connection_state_ != nullptr) {
         this->ha_connection_state_->value() = 1;
       }
       if (this->display_ != nullptr) {
@@ -1000,7 +1103,7 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
       }
       this->display_->update_partial(0, 0, 480, 800);
     }
-    this->arm_light_sleep_after_refresh_();
+    this->request_light_sleep_(PowerTransitionSource::PERIODIC_WAKE);
     this->cancel_periodic_wake_recovery_();
   }
 }
@@ -1112,7 +1215,7 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
   if (this->is_in_quiet_hours_()) {
     ESP_LOGI(TAG, "Quiet hours active at sleep entry; routing to PMIC shutdown");
     this->light_sleep_pending_ = false;
-    this->request_quiet_hours_shutdown_refresh_("sleep_timeout");
+    this->request_quiet_hours_shutdown_(this->pending_power_source_);
     return;
   }
 
@@ -1175,6 +1278,7 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
     return;
   }
 
+  ESP_LOGI(TAG, "Light sleep begin: source=%s", power_source_to_string_(this->pending_power_source_));
   ESP_LOGI(TAG, "Calling esp_light_sleep_start()");
   const esp_err_t sleep_err = esp_light_sleep_start();
   ESP_LOGI(TAG, "esp_light_sleep_start returned: %s", esp_err_to_name(sleep_err));
@@ -1209,7 +1313,7 @@ void PaperMonoActivityComponent::handle_light_sleep_wake_(esp_sleep_wakeup_cause
       } else {
         ESP_LOGI(TAG, "Wake from light sleep: quiet_hours_start -> PMIC shutdown path");
       }
-      this->request_quiet_hours_shutdown_refresh_("light_sleep_timer");
+      this->request_quiet_hours_shutdown_(PowerTransitionSource::LIGHT_SLEEP_TIMER);
       return;
     }
 

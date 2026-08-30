@@ -161,6 +161,8 @@ interval:
           then:
             - lambda: |-
                 id(ha_last_connected_ms) = millis();
+                if (id(light_sleep_wake_recovery))
+                  return;
                 if (id(ha_connection_state) != 1) {
                   if (id(ha_connecting_since_ms) == 0)
                     id(ha_connecting_since_ms) = millis();
@@ -171,11 +173,10 @@ interval:
                     id(ha_connection_state) = 1;
                     id(ha_connecting_since_ms) = 0;
                     id(m5pm1_pmu).log_pmic_wake_recovery_summary_if_needed();
-                    if (!id(controls_view) && !id(light_sleep_wake_recovery))
+                    if (!id(controls_view))
                       id(epaper_display).update();
-                }
-                }
-                else {
+                  }
+                } else {
                   id(ha_ever_connected) = true;
                   id(m5pm1_pmu).log_pmic_wake_recovery_summary_if_needed();
                 }

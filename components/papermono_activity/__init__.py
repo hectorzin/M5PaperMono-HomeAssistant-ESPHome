@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import globals, m5pm1, papermono_rtc, time
+from esphome.components import globals, m5pm1, papermono_rtc, sensor, text_sensor, time
 from esphome.components.papermono_epaper import display as papermono_epaper_display
 from esphome.const import CONF_ID
 
@@ -18,6 +18,9 @@ CONF_SCREENSAVER_REFRESH_MINUTES = "screensaver_refresh_minutes"
 CONF_QUIET_HOURS_START = "quiet_hours_start"
 CONF_QUIET_HOURS_END = "quiet_hours_end"
 CONF_HA_CONNECTION_STATE = "ha_connection_state"
+CONF_HA_WEATHER_STATE = "ha_weather_state"
+CONF_HA_INDOOR_TEMPERATURE = "ha_indoor_temperature"
+CONF_HA_INDOOR_HUMIDITY = "ha_indoor_humidity"
 CONF_WIFI_TRANSITION_PENDING = "wifi_transition_pending"
 CONF_LIGHT_SLEEP_WAKE_RECOVERY = "light_sleep_wake_recovery"
 CONF_QUIET_HOURS_SLEEP_DISPLAY = "quiet_hours_sleep_display"
@@ -54,6 +57,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_CONTROLS_VIEW): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
         cv.Required(CONF_HA_CONNECTION_STATE): cv.use_id(globals.GlobalsComponent),
+        cv.Required(CONF_HA_WEATHER_STATE): cv.use_id(text_sensor.TextSensor),
+        cv.Required(CONF_HA_INDOOR_TEMPERATURE): cv.use_id(sensor.Sensor),
+        cv.Required(CONF_HA_INDOOR_HUMIDITY): cv.use_id(sensor.Sensor),
         cv.Required(CONF_WIFI_TRANSITION_PENDING): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_LIGHT_SLEEP_WAKE_RECOVERY): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_SLEEP_DISPLAY): cv.use_id(globals.GlobalsComponent),
@@ -78,6 +84,9 @@ async def to_code(config):
     controls_view = await cg.get_variable(config[CONF_CONTROLS_VIEW])
     ha_time = await cg.get_variable(config[CONF_TIME_ID])
     ha_connection_state = await cg.get_variable(config[CONF_HA_CONNECTION_STATE])
+    ha_weather_state = await cg.get_variable(config[CONF_HA_WEATHER_STATE])
+    ha_indoor_temperature = await cg.get_variable(config[CONF_HA_INDOOR_TEMPERATURE])
+    ha_indoor_humidity = await cg.get_variable(config[CONF_HA_INDOOR_HUMIDITY])
     wifi_transition_pending = await cg.get_variable(config[CONF_WIFI_TRANSITION_PENDING])
     light_sleep_wake_recovery = await cg.get_variable(config[CONF_LIGHT_SLEEP_WAKE_RECOVERY])
     quiet_hours_sleep_display = await cg.get_variable(config[CONF_QUIET_HOURS_SLEEP_DISPLAY])
@@ -95,6 +104,9 @@ async def to_code(config):
     cg.add(var.set_controls_view(controls_view))
     cg.add(var.set_time(ha_time))
     cg.add(var.set_ha_connection_state(ha_connection_state))
+    cg.add(var.set_ha_weather_state(ha_weather_state))
+    cg.add(var.set_ha_indoor_temperature(ha_indoor_temperature))
+    cg.add(var.set_ha_indoor_humidity(ha_indoor_humidity))
     cg.add(var.set_wifi_transition_pending(wifi_transition_pending))
     cg.add(var.set_light_sleep_wake_recovery(light_sleep_wake_recovery))
     cg.add(var.set_quiet_hours_sleep_display(quiet_hours_sleep_display))

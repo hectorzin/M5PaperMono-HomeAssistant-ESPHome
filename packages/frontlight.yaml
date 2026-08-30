@@ -7,6 +7,9 @@ papermono_activity:
   controls_view: controls_view
   time_id: ha_time
   ha_connection_state: ha_connection_state
+  ha_weather_state: ha_weather_state
+  ha_indoor_temperature: ha_indoor_temperature
+  ha_indoor_humidity: ha_indoor_humidity
   wifi_transition_pending: wifi_transition_pending
   light_sleep_wake_recovery: light_sleep_wake_recovery
   quiet_hours_sleep_display: quiet_hours_sleep_display

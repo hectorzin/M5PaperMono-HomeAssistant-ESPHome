@@ -140,10 +140,10 @@ interval:
             - lambda: |-
                 if (!id(wifi_connected_state)) {
                   id(wifi_connected_state) = true;
-                  if (id(ha_connection_state) == 0 && !id(light_sleep_wake_recovery))
+                  if (id(ha_connection_state) == 0)
                     id(wifi_transition_pending) = true;
                 }
-                if (!id(light_sleep_wake_recovery) && id(wifi_transition_pending) && id(ha_connection_state) == 0 &&
+                if (id(wifi_transition_pending) && id(ha_connection_state) == 0 &&
                     id(epaper_display).is_idle() && id(epaper_display).has_baseline()) {
                   id(epaper_display).update_partial(0, 0, 480, 800);
                   id(wifi_transition_pending) = false;

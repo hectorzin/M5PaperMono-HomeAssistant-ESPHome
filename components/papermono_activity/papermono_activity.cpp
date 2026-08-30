@@ -35,6 +35,8 @@ static constexpr uint8_t PICKUP_FULL_THRESHOLD = 8;
 static constexpr uint8_t CONTROLS_ENTER_FULL_THRESHOLD = 8;
 static constexpr uint8_t CONTROLS_EXIT_FULL_THRESHOLD = 10;
 static constexpr uint32_t HA_STATE_SETTLE_MS = 1750;
+static constexpr uint32_t PMIC_HA_DATA_POLL_INTERVAL_MS = 225;
+static constexpr uint32_t PMIC_HA_DATA_TIMEOUT_MS = 5000;
 static constexpr uint32_t PERIODIC_WAKE_RECOVERY_TIMEOUT_MS = 30000;
 static constexpr uint32_t GPIO_BLOCK_LOG_INTERVAL_MS = 10000;
 static constexpr uint32_t SHUTDOWN_SETTLE_MS = 100;
@@ -704,8 +706,10 @@ void PaperMonoActivityComponent::begin_pmic_ha_final_full_recovery_() {
   }
   this->periodic_wake_started_ms_ = millis();
   this->periodic_wake_recovery_timeout_logged_ = false;
+  this->pmic_ha_wifi_connected_logged_ = false;
   this->pmic_ha_connection_logged_ = false;
-  this->pmic_ha_data_ready_logged_ = false;
+  this->pmic_ha_connected_ms_ = 0;
+  this->pmic_ha_next_poll_ms_ = 0;
   this->periodic_wake_phase_ = PeriodicWakePhase::WAIT_API;
   ESP_LOGI(TAG, "PMIC boot: mandatory FULL complete; waiting for HA data");
 }
@@ -1082,6 +1086,96 @@ void PaperMonoActivityComponent::request_light_sleep_(PowerTransitionSource sour
   this->light_sleep_pending_ = true;
 }
 
+void PaperMonoActivityComponent::log_missing_pmic_ha_data_(uint32_t elapsed_ms) const {
+  char missing[96] = "";
+  auto append = [&](const char *field) {
+    if (missing[0] != '\0') {
+      std::strncat(missing, ", ", sizeof(missing) - std::strlen(missing) - 1);
+    }
+    std::strncat(missing, field, sizeof(missing) - std::strlen(missing) - 1);
+  };
+
+  if (this->time_ == nullptr || !this->time_->now().is_valid()) {
+    append("ha_time");
+  }
+  if (this->ha_weather_state_ == nullptr || !this->ha_weather_state_->has_state()) {
+    append("ha_weather_state");
+  }
+  if (this->ha_indoor_temperature_ == nullptr || !this->ha_indoor_temperature_->has_state()) {
+    append("ha_indoor_temperature");
+  }
+  if (this->ha_indoor_humidity_ == nullptr || !this->ha_indoor_humidity_->has_state()) {
+    append("ha_indoor_humidity");
+  }
+  if (missing[0] == '\0') {
+    std::strncpy(missing, "none", sizeof(missing));
+    missing[sizeof(missing) - 1] = '\0';
+  }
+  ESP_LOGW(TAG, "PMIC boot: HA data timeout after %u ms; missing: %s", elapsed_ms, missing);
+}
+
+void PaperMonoActivityComponent::complete_pmic_ha_final_full_() {
+  if (this->pmu_ != nullptr) {
+    this->pmu_->refresh_power_and_battery();
+  }
+  if (this->ha_connection_state_ != nullptr) {
+    this->ha_connection_state_->value() = 1;
+  }
+  if (this->wifi_transition_pending_ != nullptr) {
+    this->wifi_transition_pending_->value() = false;
+  }
+  if (this->display_ != nullptr) {
+    ESP_LOGI(TAG, "PMIC boot: final HA FULL requested (ha_state=%d)",
+             this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1);
+    this->display_->update();
+  }
+  this->pmic_ha_final_full_pending_ = false;
+  this->clear_wake_recovery_flag_();
+  this->cancel_periodic_wake_recovery_();
+  ESP_LOGI(TAG, "PMIC boot: final HA FULL recovery complete");
+}
+
+void PaperMonoActivityComponent::process_pmic_ha_final_full_recovery_() {
+#ifdef USE_WIFI
+  if (wifi::global_wifi_component == nullptr || !wifi::global_wifi_component->is_connected()) {
+    return;
+  }
+#endif
+
+  if (!this->pmic_ha_wifi_connected_logged_) {
+    ESP_LOGI(TAG, "PMIC boot: WiFi connected; waiting for Home Assistant");
+    this->pmic_ha_wifi_connected_logged_ = true;
+  }
+
+  if (!this->is_home_assistant_connected_()) {
+    return;
+  }
+
+  const uint32_t now = millis();
+  if (!this->pmic_ha_connection_logged_) {
+    ESP_LOGI(TAG, "PMIC boot: Home Assistant connected; waiting for required HA data");
+    this->pmic_ha_connection_logged_ = true;
+    this->pmic_ha_connected_ms_ = now;
+    this->pmic_ha_next_poll_ms_ = now;
+  }
+
+  if (static_cast<int32_t>(now - this->pmic_ha_next_poll_ms_) < 0) {
+    return;
+  }
+  this->pmic_ha_next_poll_ms_ = now + PMIC_HA_DATA_POLL_INTERVAL_MS;
+
+  if (this->is_home_assistant_data_ready_()) {
+    ESP_LOGI(TAG, "PMIC boot: required HA data ready after %u ms", now - this->pmic_ha_connected_ms_);
+    this->complete_pmic_ha_final_full_();
+    return;
+  }
+
+  if (this->pmic_ha_connected_ms_ != 0 && now - this->pmic_ha_connected_ms_ >= PMIC_HA_DATA_TIMEOUT_MS) {
+    this->log_missing_pmic_ha_data_(now - this->pmic_ha_connected_ms_);
+    this->complete_pmic_ha_final_full_();
+  }
+}
+
 void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
   if (!this->pmic_ha_final_full_pending_) {
     if (this->last_activity_ms_ != this->periodic_wake_activity_ms_) {
@@ -1099,49 +1193,37 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
     }
   }
 
-  if (!this->pmic_ha_final_full_pending_) {
-    if (!this->is_network_api_ready_()) {
-      const uint32_t elapsed = millis() - this->periodic_wake_started_ms_;
-      if (this->periodic_wake_started_ms_ != 0 && elapsed >= PERIODIC_WAKE_RECOVERY_TIMEOUT_MS) {
-        if (!this->periodic_wake_recovery_timeout_logged_) {
-          ESP_LOGI(TAG, "Periodic wake: network/API timeout, returning to sleep");
-          this->periodic_wake_recovery_timeout_logged_ = true;
-        }
-        this->periodic_wake_phase_ = PeriodicWakePhase::NONE;
-        this->periodic_wake_settle_start_ms_ = 0;
-        this->periodic_wake_started_ms_ = 0;
-        this->clear_wake_recovery_flag_();
-        this->request_light_sleep_(PowerTransitionSource::PERIODIC_WAKE);
-        if (this->can_enter_light_sleep_()) {
-          this->enter_light_sleep_();
-        }
+  if (this->pmic_ha_final_full_pending_) {
+    this->process_pmic_ha_final_full_recovery_();
+    return;
+  }
+
+  if (!this->is_network_api_ready_()) {
+    const uint32_t elapsed = millis() - this->periodic_wake_started_ms_;
+    if (this->periodic_wake_started_ms_ != 0 && elapsed >= PERIODIC_WAKE_RECOVERY_TIMEOUT_MS) {
+      if (!this->periodic_wake_recovery_timeout_logged_) {
+        ESP_LOGI(TAG, "Periodic wake: network/API timeout, returning to sleep");
+        this->periodic_wake_recovery_timeout_logged_ = true;
       }
-      return;
+      this->periodic_wake_phase_ = PeriodicWakePhase::NONE;
+      this->periodic_wake_settle_start_ms_ = 0;
+      this->periodic_wake_started_ms_ = 0;
+      this->clear_wake_recovery_flag_();
+      this->request_light_sleep_(PowerTransitionSource::PERIODIC_WAKE);
+      if (this->can_enter_light_sleep_()) {
+        this->enter_light_sleep_();
+      }
     }
-  } else {
-    if (!this->pmic_ha_connection_logged_ && this->is_home_assistant_connected_()) {
-      ESP_LOGI(TAG, "HA connection established");
-      this->pmic_ha_connection_logged_ = true;
-    }
-    if (!this->is_home_assistant_data_ready_()) {
-      return;
-    }
-    if (!this->pmic_ha_data_ready_logged_) {
-      ESP_LOGI(TAG, "HA data ready");
-      this->pmic_ha_data_ready_logged_ = true;
-    }
+    return;
   }
 
   this->periodic_wake_recovery_timeout_logged_ = false;
 
   if (this->periodic_wake_phase_ == PeriodicWakePhase::WAIT_API) {
-    if (!this->pmic_ha_final_full_pending_) {
-      ESP_LOGI(TAG, "Periodic wake: API ready, settling HA states");
-    }
+    ESP_LOGI(TAG, "Periodic wake: API ready, settling HA states");
     this->periodic_wake_settle_start_ms_ = millis();
     this->periodic_wake_phase_ = PeriodicWakePhase::SETTLE;
-    ESP_LOGI(TAG, "%s: HA settle start (%u ms)", this->pmic_ha_final_full_pending_ ? "PMIC boot" : "Periodic wake",
-             HA_STATE_SETTLE_MS);
+    ESP_LOGI(TAG, "Periodic wake: HA settle start (%u ms)", HA_STATE_SETTLE_MS);
     return;
   }
 
@@ -1153,23 +1235,6 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
 
     if (this->pmu_ != nullptr) {
       this->pmu_->refresh_power_and_battery();
-    }
-
-    if (this->pmic_ha_final_full_pending_) {
-      ESP_LOGI(TAG, "PMIC boot: HA settle complete (%u ms); starting final FULL", elapsed);
-      if (this->ha_connection_state_ != nullptr) {
-        this->ha_connection_state_->value() = 1;
-      }
-      if (this->display_ != nullptr) {
-        ESP_LOGI(TAG, "PMIC boot: final HA FULL requested (ha_state=%d)",
-                 this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1);
-        this->display_->update();
-      }
-      this->pmic_ha_final_full_pending_ = false;
-      this->clear_wake_recovery_flag_();
-      this->cancel_periodic_wake_recovery_();
-      ESP_LOGI(TAG, "PMIC boot: final HA FULL recovery complete");
-      return;
     }
 
     ESP_LOGI(TAG, "Periodic wake: refresh after %u ms settle", elapsed);

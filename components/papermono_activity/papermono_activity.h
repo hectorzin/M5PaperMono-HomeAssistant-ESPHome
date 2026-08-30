@@ -161,6 +161,9 @@ class PaperMonoActivityComponent : public Component {
   bool is_network_api_ready_() const;
   bool is_home_assistant_connected_() const;
   bool is_home_assistant_data_ready_() const;
+  void log_missing_pmic_ha_data_(uint32_t elapsed_ms) const;
+  void process_pmic_ha_final_full_recovery_();
+  void complete_pmic_ha_final_full_();
   void process_periodic_wake_recovery_();
   void process_shutdown_pending_();
   void disable_wifi_for_sleep_();
@@ -251,8 +254,10 @@ class PaperMonoActivityComponent : public Component {
   uint32_t pmic_hw_recovery_next_probe_ms_{0};
   bool pmic_hw_recovery_wait_logged_{false};
   bool pmic_ha_final_full_pending_{false};
+  bool pmic_ha_wifi_connected_logged_{false};
   bool pmic_ha_connection_logged_{false};
-  bool pmic_ha_data_ready_logged_{false};
+  uint32_t pmic_ha_connected_ms_{0};
+  uint32_t pmic_ha_next_poll_ms_{0};
   m5ioe1::M5IOE1Component *m5ioe1_{nullptr};
   PeriodicWakePhase periodic_wake_phase_{PeriodicWakePhase::NONE};
   ShutdownPhase shutdown_phase_{ShutdownPhase::NONE};

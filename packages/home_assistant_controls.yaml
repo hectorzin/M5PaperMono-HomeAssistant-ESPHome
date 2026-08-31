@@ -1,0 +1,7 @@
+# Stable wiring for the dynamic controls component.
+# The user-editable controls list is merged into this package from paper_mono.yaml.
+controls:
+  id: controls_id
+  display_id: epaper_display
+  controls_view: controls_view
+  ha_connection_state: ha_connection_state

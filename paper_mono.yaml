@@ -1,13 +1,36 @@
-# Firmware entry point. User-specific Home Assistant entity IDs stay in
-# config/home_assistant.yaml; the packages below compose the stable firmware.
+# Firmware entry point. This is the only firmware YAML the user needs to edit.
 substitutions:
   device_name: paper-mono
+  ha_weather_entity: weather.estacion_meteorologica
+  ha_indoor_temperature_entity: sensor.ws2900_v2_02_03_indoor_temperature
+  ha_indoor_humidity_entity: sensor.ws2900_v2_02_03_indoor_humidity
+  ha_outdoor_pm25_entity: sensor.ws2900_v2_02_03_pm2_5_1
+  ha_indoor_co2_entity: sensor.i_9psl_dioxido_de_carbono
+  ha_indoor_pm25_entity: sensor.i_9psl_pm2_5
+  ha_indoor_voc_entity: sensor.i_9psl_indice_cov
+  ha_solar_power_entity: sensor.ingeteam_pv_internal_total_power
+  ha_house_power_entity: sensor.ingeteam_total_loads_power
+  ha_grid_import_entity: sensor.ingeteam_external_meter_ac_active_power
+  ha_grid_export_entity: sensor.ingeteam_external_meter_ac_active_power_returned
+  ha_battery_charge_entity: sensor.ingeteam_battery_charging_power
+  ha_battery_discharge_entity: sensor.ingeteam_battery_discharging_power
+  ha_battery_soc_entity: sensor.ingeteam_battery_state_of_charge
   frontlight_default_brightness: "30"
   frontlight_timeout_seconds: "30"
   sleep_timeout_seconds: "60"
   screensaver_refresh_minutes: "5"
   quiet_hours_start: "00:00"
   quiet_hours_end: "08:00"
+
+controls:
+  controls:
+    - entity_id: climate.ac_salon_inteligente
+      name: Clima
+    - entity_id: light.sofa
+      name: Luces
+    - entity_id: cover.persiana_jardin
+    - entity_id: vacuum.lefant_m210_pro_omni_3
+      name: Robot
 
 packages:
   runtime_config: !include packages/runtime_config.yaml
@@ -16,7 +39,7 @@ packages:
   hardware: !include packages/hardware.yaml
   battery: !include packages/battery.yaml
   status_led: !include packages/status_led.yaml
-  home_assistant_entities: !include config/home_assistant.yaml
+  home_assistant_controls: !include packages/home_assistant_controls.yaml
   home_assistant_runtime: !include packages/home_assistant.yaml
   ui: !include packages/ui.yaml
   frontlight: !include packages/frontlight.yaml

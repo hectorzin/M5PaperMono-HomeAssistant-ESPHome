@@ -23,7 +23,7 @@ La primera compilación ESPHome/ESP-IDF descarga varios GB de toolchain; requier
 
 ## Estructura de configuracion
 
-`paper_mono.yaml` es el punto de entrada y enumera los paquetes que forman el firmware. Las entidades que debe adaptar cada usuario permanecen centralizadas en `config/home_assistant.yaml`. La configuracion funcional se organiza en `packages/` (nucleo, conectividad, hardware, Home Assistant y UI), mientras que `components/papermono_epaper/` conserva el driver e-paper especifico.
+`paper_mono.yaml` es el único punto de entrada editable: contiene el nombre, las entidades de Home Assistant, la lista `controls` y los parámetros opcionales. La configuración funcional se organiza en `packages/` (núcleo, conectividad, hardware, Home Assistant y UI); `packages/home_assistant_controls.yaml` conserva el cableado fijo del componente dinámico, mientras que `components/papermono_epaper/` conserva el driver e-paper específico. `secrets.yaml` sigue siendo únicamente el archivo local de credenciales Wi-Fi.
 
 ## Validar y compilar (sin flashear)
 

@@ -9,6 +9,7 @@
 #include "esp_sleep.h"
 
 #include "esphome/core/component.h"
+#include "esphome/components/output/float_output.h"
 #include "esphome/components/globals/globals_component.h"
 
 namespace esphome::globals {
@@ -43,7 +44,22 @@ namespace esphome::time {
 class RealTimeClock;
 }
 
+namespace esphome::light {
+class LightState;
+}
+
 namespace esphome::papermono_activity {
+
+class PaperMonoActivityComponent;
+
+class PaperMonoFrontlightOutput : public output::FloatOutput {
+ public:
+  void set_activity(PaperMonoActivityComponent *activity);
+
+ protected:
+  void write_state(float state) override;
+  PaperMonoActivityComponent *activity_{nullptr};
+};
 
 enum class ActivitySource : uint8_t {
   MOTION = 0,
@@ -117,6 +133,11 @@ class PaperMonoActivityComponent : public Component {
   void set_sleep_timeout_seconds(globals::RestoringGlobalsComponent<uint32_t> *value) {
     this->sleep_timeout_seconds_ = value;
   }
+  void set_frontlight_light(light::LightState *light) { this->frontlight_light_ = light; }
+  void set_frontlight_output(PaperMonoFrontlightOutput *output) {
+    this->frontlight_output_ = output;
+    if (this->frontlight_output_ != nullptr) this->frontlight_output_->set_activity(this);
+  }
   void set_screensaver_refresh_minutes(globals::RestoringGlobalsComponent<int> *value) {
     this->screensaver_refresh_minutes_global_ = value;
   }
@@ -142,9 +163,16 @@ class PaperMonoActivityComponent : public Component {
   void request_sleep_now(const std::string &wake_at);
   void request_shutdown_until(const std::string &wake_at);
 
+  bool frontlight_is_on() const { return this->frontlight_on_; }
+  void set_frontlight_from_ha(bool on);
+  void set_frontlight_from_ha(bool on, float brightness_percent);
+  void set_frontlight_from_output(float level);
+
  protected:
   void exit_controls_(bool preserve_sleep_pending);
   void apply_frontlight_(bool on, ActivitySource source);
+  bool set_frontlight_level_(bool on, uint8_t brightness_percent);
+  void publish_frontlight_state_();
   void turn_off_timeout_();
   void on_pickup_transition_();
   bool in_controls_view_() const;
@@ -226,6 +254,8 @@ class PaperMonoActivityComponent : public Component {
   globals::GlobalsComponent<bool> *quiet_hours_user_override_{nullptr};
   globals::GlobalsComponent<float> *battery_display_level_{nullptr};
   time::RealTimeClock *time_{nullptr};
+  light::LightState *frontlight_light_{nullptr};
+  PaperMonoFrontlightOutput *frontlight_output_{nullptr};
   globals::RestoringGlobalsComponent<int> *frontlight_default_brightness_{nullptr};
   globals::RestoringGlobalsComponent<uint32_t> *frontlight_timeout_seconds_{nullptr};
   globals::RestoringGlobalsComponent<uint32_t> *sleep_timeout_seconds_{nullptr};
@@ -243,6 +273,7 @@ class PaperMonoActivityComponent : public Component {
   uint32_t last_gpio_block_log_ms_{0};
   bool activity_active_{false};
   bool frontlight_on_{false};
+  uint8_t frontlight_brightness_percent_{0};
   bool pickup_cleanup_pending_{false};
   bool light_sleep_pending_{false};
   bool sleep_timeout_logged_{false};

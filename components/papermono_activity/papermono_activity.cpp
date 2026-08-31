@@ -11,6 +11,7 @@
 #include "esphome/components/globals/globals_component.h"
 #include "esphome/components/m5ioe1/m5ioe1.h"
 #include "esphome/components/m5pm1/m5pm1.h"
+#include "esphome/components/light/light_state.h"
 #include "esphome/components/papermono_epaper/papermono_epaper.h"
 #include "esphome/components/papermono_rtc/papermono_rtc.h"
 #include "esphome/components/sensor/sensor.h"
@@ -23,6 +24,12 @@
 #include "esp_sleep.h"
 
 namespace esphome::papermono_activity {
+
+void PaperMonoFrontlightOutput::set_activity(PaperMonoActivityComponent *activity) { this->activity_ = activity; }
+
+void PaperMonoFrontlightOutput::write_state(float state) {
+  if (this->activity_ != nullptr) this->activity_->set_frontlight_from_output(state);
+}
 
 static const char *const TAG = "papermono_activity";
 
@@ -89,6 +96,8 @@ void PaperMonoActivityComponent::setup() {
 
   this->pmu_->set_frontlight_level(0);
   this->frontlight_on_ = false;
+  this->frontlight_brightness_percent_ = this->on_brightness_percent_();
+  this->publish_frontlight_state_();
   this->activity_active_ = false;
   this->pickup_cleanup_pending_ = false;
   this->light_sleep_pending_ = false;
@@ -1546,8 +1555,9 @@ void PaperMonoActivityComponent::apply_frontlight_(bool on, ActivitySource sourc
   }
 
   if (on) {
-    this->pmu_->set_frontlight_level(this->on_brightness_percent_());
-    this->frontlight_on_ = true;
+    if (!this->set_frontlight_level_(true, this->on_brightness_percent_())) {
+      return;
+    }
     if (source == ActivitySource::MOTION) {
       ESP_LOGI(TAG, "Frontlight: ON (activity=motion)");
       this->last_motion_log_ms_ = millis();
@@ -1557,8 +1567,72 @@ void PaperMonoActivityComponent::apply_frontlight_(bool on, ActivitySource sourc
     return;
   }
 
-  this->pmu_->set_frontlight_level(0);
-  this->frontlight_on_ = false;
+  this->set_frontlight_level_(false, this->frontlight_brightness_percent_);
+}
+
+void PaperMonoActivityComponent::set_frontlight_from_ha(bool on) {
+  this->set_frontlight_from_ha(on, -1.0f);
+}
+
+void PaperMonoActivityComponent::set_frontlight_from_ha(bool on, float brightness_percent) {
+  if (this->pmu_ == nullptr) {
+    return;
+  }
+
+  if (brightness_percent >= 0.0f) {
+    const int configured = static_cast<int>(std::lround(brightness_percent));
+    if (this->frontlight_default_brightness_ != nullptr) {
+      this->frontlight_default_brightness_->value() = std::clamp(configured, 0, 100);
+    }
+  }
+
+  const uint8_t brightness = this->on_brightness_percent_();
+  if (!on || brightness == 0) {
+    this->activity_active_ = false;
+    this->set_frontlight_level_(false, brightness);
+    ESP_LOGI(TAG, "Frontlight: OFF (source=home_assistant)");
+    return;
+  }
+
+  if (this->set_frontlight_level_(true, brightness)) {
+    this->activity_active_ = true;
+    this->last_activity_ms_ = millis();
+    this->sleep_timeout_logged_ = false;
+    ESP_LOGI(TAG, "Frontlight: ON (source=home_assistant, brightness=%u%%)", brightness);
+  }
+}
+
+void PaperMonoActivityComponent::set_frontlight_from_output(float level) {
+  if (level <= 0.0f) {
+    this->set_frontlight_from_ha(false);
+  } else {
+    this->set_frontlight_from_ha(true, level * 100.0f);
+  }
+}
+
+bool PaperMonoActivityComponent::set_frontlight_level_(bool on, uint8_t brightness_percent) {
+  const uint8_t level = on ? brightness_percent : 0;
+  if (!this->pmu_->set_frontlight_level(level)) {
+    ESP_LOGW(TAG, "Frontlight: physical update failed (requested=%u%%)", level);
+    return false;
+  }
+  this->frontlight_on_ = on && level != 0;
+  this->frontlight_brightness_percent_ = brightness_percent;
+  this->publish_frontlight_state_();
+  return true;
+}
+
+void PaperMonoActivityComponent::publish_frontlight_state_() {
+  if (this->frontlight_light_ == nullptr) {
+    return;
+  }
+  this->frontlight_light_->current_values.set_state(this->frontlight_on_);
+  this->frontlight_light_->current_values.set_brightness(this->frontlight_brightness_percent_ / 100.0f);
+  // Keep the next HA turn_on without an explicit brightness aligned with the
+  // actual runtime level, including changes caused by touch, motion, or timeout.
+  this->frontlight_light_->remote_values.set_state(this->frontlight_on_);
+  this->frontlight_light_->remote_values.set_brightness(this->frontlight_brightness_percent_ / 100.0f);
+  this->frontlight_light_->publish_state();
 }
 
 void PaperMonoActivityComponent::turn_off_timeout_() {

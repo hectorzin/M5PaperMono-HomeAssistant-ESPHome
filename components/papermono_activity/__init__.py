@@ -1,6 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import globals, m5pm1, papermono_rtc, sensor, text_sensor, time
+from esphome.components import globals, light, m5pm1, output, papermono_rtc, sensor, text_sensor, time
 from esphome.components.papermono_epaper import display as papermono_epaper_display
 from esphome.const import CONF_ID
 
@@ -29,9 +29,12 @@ CONF_BATTERY_DISPLAY_LEVEL = "battery_display_level"
 CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS = "frontlight_default_brightness"
 CONF_FRONTLIGHT_TIMEOUT_SECONDS = "frontlight_timeout_seconds"
 CONF_SLEEP_TIMEOUT_SECONDS = "sleep_timeout_seconds"
+CONF_FRONTLIGHT_LIGHT = "frontlight_light"
+CONF_FRONTLIGHT_OUTPUT = "frontlight_output"
 
 papermono_activity_ns = cg.esphome_ns.namespace("papermono_activity")
 PaperMonoActivityComponent = papermono_activity_ns.class_("PaperMonoActivityComponent", cg.Component)
+PaperMonoFrontlightOutput = papermono_activity_ns.class_("PaperMonoFrontlightOutput", output.FloatOutput)
 
 
 def validate_screensaver_refresh_minutes(value):
@@ -68,6 +71,8 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_FRONTLIGHT_TIMEOUT_SECONDS): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_SLEEP_TIMEOUT_SECONDS): cv.use_id(globals.GlobalsComponent),
+        cv.Required(CONF_FRONTLIGHT_LIGHT): cv.use_id(light.LightState),
+        cv.Required(CONF_FRONTLIGHT_OUTPUT): cv.use_id(PaperMonoFrontlightOutput),
         cv.Required(CONF_SCREENSAVER_REFRESH_MINUTES): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_START): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_END): cv.use_id(globals.GlobalsComponent),
@@ -95,6 +100,8 @@ async def to_code(config):
     frontlight_default_brightness = await cg.get_variable(config[CONF_FRONTLIGHT_DEFAULT_BRIGHTNESS])
     frontlight_timeout_seconds = await cg.get_variable(config[CONF_FRONTLIGHT_TIMEOUT_SECONDS])
     sleep_timeout_seconds = await cg.get_variable(config[CONF_SLEEP_TIMEOUT_SECONDS])
+    frontlight_light = await cg.get_variable(config[CONF_FRONTLIGHT_LIGHT])
+    frontlight_output = await cg.get_variable(config[CONF_FRONTLIGHT_OUTPUT])
     screensaver_refresh_minutes = await cg.get_variable(config[CONF_SCREENSAVER_REFRESH_MINUTES])
     quiet_hours_start = await cg.get_variable(config[CONF_QUIET_HOURS_START])
     quiet_hours_end = await cg.get_variable(config[CONF_QUIET_HOURS_END])
@@ -115,6 +122,8 @@ async def to_code(config):
     cg.add(var.set_frontlight_default_brightness(frontlight_default_brightness))
     cg.add(var.set_frontlight_timeout_seconds(frontlight_timeout_seconds))
     cg.add(var.set_sleep_timeout_seconds(sleep_timeout_seconds))
+    cg.add(var.set_frontlight_light(frontlight_light))
+    cg.add(var.set_frontlight_output(frontlight_output))
     cg.add(var.set_screensaver_refresh_minutes(screensaver_refresh_minutes))
     cg.add(var.set_quiet_hours_start(quiet_hours_start))
     cg.add(var.set_quiet_hours_end(quiet_hours_end))

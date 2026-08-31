@@ -1,4 +1,17 @@
 # Frontlight activity timeout and BMI270 motion wake for PaperMono.
+output:
+  - platform: papermono_activity
+    id: paper_mono_frontlight_output
+
+light:
+  - platform: monochromatic
+    output: paper_mono_frontlight_output
+    name: Frontlight
+    id: paper_mono_frontlight
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 0s
+    gamma_correct: 1.0
+
 papermono_activity:
   id: papermono_activity_hub
   m5pm1_id: m5pm1_pmu
@@ -21,6 +34,8 @@ papermono_activity:
   screensaver_refresh_minutes: screensaver_refresh_minutes
   quiet_hours_start: quiet_hours_start
   quiet_hours_end: quiet_hours_end
+  frontlight_light: paper_mono_frontlight
+  frontlight_output: paper_mono_frontlight_output
 
 papermono_imu:
   id: papermono_imu_hub

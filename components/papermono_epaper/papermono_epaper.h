@@ -38,6 +38,16 @@ static constexpr uint16_t NATIVE_HEIGHT = 480;
 static constexpr uint16_t BYTES_PER_ROW = NATIVE_WIDTH / 8;
 static constexpr size_t FRAME_SIZE = BYTES_PER_ROW * NATIVE_HEIGHT;
 
+enum class RefreshPolicy : uint8_t {
+  AUTOMATIC = 0,
+  USER_INTERACTION = 1,
+};
+
+enum class RefreshKind : uint8_t {
+  NORMAL = 0,
+  MANDATORY_FULL = 1,
+};
+
 class PaperMonoEpaper
     : public display::Display,
       public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW, spi::CLOCK_PHASE_LEADING,
@@ -50,9 +60,10 @@ class PaperMonoEpaper
     this->transform_ = transform;
     this->update_effective_transform_();
   }
-  // 0 disables automatic FULL from partial_count; values > 0 enable the threshold.
+  // Legacy YAML option; retained for compatibility but ignored by refresh policy.
   void set_full_update_every(uint8_t every) { this->full_update_every_ = every; }
   uint8_t get_partial_count() const { return this->partial_count_; }
+  void request_refresh(RefreshPolicy policy, RefreshKind kind, const char *source = "unknown");
   bool is_idle() const;
   bool has_refresh_pending() const;
   bool has_baseline() const;
@@ -144,7 +155,14 @@ class PaperMonoEpaper
   void sync_pmic_mandatory_full_gate_();
   bool enforce_pmic_mandatory_full_gate_(const char *stage);
   void log_physical_refresh_commit_(const char *stage) const;
-  void request_refresh_(bool full);
+  static const char *policy_label_(RefreshPolicy policy);
+  static uint8_t policy_threshold_(RefreshPolicy policy);
+  static RefreshPolicy merge_pending_policy_(RefreshPolicy existing, RefreshPolicy incoming);
+  static RefreshKind merge_pending_kind_(RefreshKind existing, RefreshKind incoming);
+  bool resolve_refresh_full_(RefreshKind kind, RefreshPolicy policy) const;
+  void log_refresh_execute_(const char *source, RefreshPolicy policy, RefreshKind kind, bool full) const;
+  void merge_pending_refresh_(RefreshPolicy policy, RefreshKind kind, const char *source);
+  void execute_refresh_request_(RefreshPolicy policy, RefreshKind kind, const char *source);
   void begin_refresh_(bool full);
   void process_pending_refresh_();
   void set_state_(State state, uint16_t delay_ms = 0);
@@ -177,11 +195,16 @@ class PaperMonoEpaper
 
   uint8_t transform_{TRANSFORM_NONE};
   uint8_t effective_transform_{TRANSFORM_NONE};
-  uint8_t full_update_every_{10};
+  uint8_t full_update_every_{0};
   uint8_t partial_count_{0};
-  bool force_full_next_{false};
-  bool pending_update_{false};
-  bool pending_full_{false};
+
+  struct PendingRefreshRequest {
+    bool active{false};
+    RefreshPolicy policy{RefreshPolicy::AUTOMATIC};
+    RefreshKind kind{RefreshKind::NORMAL};
+    const char *source{"unknown"};
+  };
+  PendingRefreshRequest pending_refresh_{};
 
   State state_{State::IDLE};
   State after_activate_{State::IDLE};

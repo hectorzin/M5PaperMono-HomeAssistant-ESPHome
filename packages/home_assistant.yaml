@@ -219,7 +219,9 @@ script:
           if (id(controls_view) && id(epaper_display).is_idle() &&
               !id(epaper_display).has_refresh_pending()) {
             id(epaper_display).add_partial_region(0, 100, 480, 700);
-            id(epaper_display).update_partial();
+            id(epaper_display).request_refresh(
+                papermono_epaper::RefreshPolicy::USER_INTERACTION,
+                papermono_epaper::RefreshKind::NORMAL, "controls_action");
           }
   - id: control_light_toggle
     then:

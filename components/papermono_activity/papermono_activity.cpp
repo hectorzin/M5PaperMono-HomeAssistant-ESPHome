@@ -29,8 +29,6 @@ static const char *const TAG = "papermono_activity";
 // FT6336G touch INT -> ESP32 GPIO4 (active low, pull-up in hardware.yaml).
 static constexpr gpio_num_t TOUCH_WAKE_GPIO = GPIO_NUM_4;
 
-static constexpr uint8_t SCREENSAVER_FULL_EVERY = 0;
-static constexpr uint8_t CONTROLS_FULL_EVERY = 15;
 static constexpr uint8_t PICKUP_FULL_THRESHOLD = 8;
 static constexpr uint8_t CONTROLS_ENTER_FULL_THRESHOLD = 8;
 static constexpr uint8_t CONTROLS_EXIT_FULL_THRESHOLD = 10;
@@ -123,7 +121,6 @@ void PaperMonoActivityComponent::setup() {
   }
 
   this->handle_boot_wake_source_();
-  this->request_screensaver_refresh_policy_();
   ESP_LOGI(TAG, "Frontlight init: OFF (boot default)");
   ESP_LOGI(TAG, "Runtime config: frontlight_brightness=%u%% frontlight_timeout=%us sleep_timeout=%us quiet_start=%s quiet_end=%s refresh_interval=%umin",
            this->on_brightness_percent_(), this->timeout_ms_() / 1000U, this->sleep_timeout_ms_() / 1000U,
@@ -289,20 +286,6 @@ bool PaperMonoActivityComponent::is_home_assistant_data_ready_() const {
   return true;
 }
 
-void PaperMonoActivityComponent::request_screensaver_refresh_policy_() {
-  if (this->display_ == nullptr) {
-    return;
-  }
-  this->display_->set_full_update_every(SCREENSAVER_FULL_EVERY);
-}
-
-void PaperMonoActivityComponent::request_controls_refresh_policy_() {
-  if (this->display_ == nullptr) {
-    return;
-  }
-  this->display_->set_full_update_every(CONTROLS_FULL_EVERY);
-}
-
 void PaperMonoActivityComponent::on_pickup_transition_() {
   if (this->display_ == nullptr) {
     return;
@@ -315,7 +298,8 @@ void PaperMonoActivityComponent::on_pickup_transition_() {
   if (count >= PICKUP_FULL_THRESHOLD) {
     ESP_LOGI(TAG, "Pickup: partial_count=%u -> FULL cleanup", count);
     this->pickup_cleanup_pending_ = true;
-    this->display_->update();
+    this->display_->request_refresh(papermono_epaper::RefreshPolicy::USER_INTERACTION,
+                                    papermono_epaper::RefreshKind::MANDATORY_FULL, "pickup_cleanup");
     return;
   }
 
@@ -331,23 +315,24 @@ void PaperMonoActivityComponent::enter_controls() {
     return;
   }
 
-  this->request_controls_refresh_policy_();
-
   if (this->pickup_cleanup_pending_) {
     ESP_LOGI(TAG, "Pickup cleanup already pending -> Controls PARTIAL only");
-    this->display_->update_partial(0, 0, 480, 800);
+    this->display_->request_refresh(papermono_epaper::RefreshPolicy::USER_INTERACTION,
+                                    papermono_epaper::RefreshKind::NORMAL, "enter_controls");
     return;
   }
 
   const uint8_t count = this->display_->get_partial_count();
   if (count >= CONTROLS_ENTER_FULL_THRESHOLD) {
     ESP_LOGI(TAG, "Enter controls: partial_count=%u -> FULL", count);
-    this->display_->update();
+    this->display_->request_refresh(papermono_epaper::RefreshPolicy::USER_INTERACTION,
+                                    papermono_epaper::RefreshKind::MANDATORY_FULL, "enter_controls_cleanup");
     return;
   }
 
   ESP_LOGI(TAG, "Enter controls: partial_count=%u -> PARTIAL", count);
-  this->display_->update_partial(0, 0, 480, 800);
+  this->display_->request_refresh(papermono_epaper::RefreshPolicy::USER_INTERACTION,
+                                  papermono_epaper::RefreshKind::NORMAL, "enter_controls");
 }
 
 void PaperMonoActivityComponent::exit_controls() { this->exit_controls_(false); }
@@ -366,13 +351,14 @@ void PaperMonoActivityComponent::exit_controls_(bool preserve_sleep_pending) {
   const uint8_t count = this->display_->get_partial_count();
   if (count >= CONTROLS_EXIT_FULL_THRESHOLD) {
     ESP_LOGI(TAG, "Exit controls: partial_count=%u -> FULL cleanup", count);
-    this->display_->update();
+    this->display_->request_refresh(papermono_epaper::RefreshPolicy::USER_INTERACTION,
+                                    papermono_epaper::RefreshKind::MANDATORY_FULL, "exit_controls_cleanup");
   } else {
     ESP_LOGI(TAG, "Exit controls: partial_count=%u -> PARTIAL", count);
-    this->display_->update_partial(0, 0, 480, 800);
+    this->display_->request_refresh(papermono_epaper::RefreshPolicy::USER_INTERACTION,
+                                    papermono_epaper::RefreshKind::NORMAL, "exit_controls");
   }
 
-  this->request_screensaver_refresh_policy_();
 }
 
 uint32_t PaperMonoActivityComponent::current_time_bucket_() const {
@@ -777,7 +763,8 @@ void PaperMonoActivityComponent::request_quiet_hours_shutdown_(PowerTransitionSo
   }
   this->sync_battery_display_for_shutdown_();
   if (this->display_ != nullptr) {
-    this->display_->update_partial(0, 0, 480, 800);
+    this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC, papermono_epaper::RefreshKind::NORMAL,
+                                    "quiet_shutdown");
   }
   this->shutdown_eligible_activity_ms_ = this->last_activity_ms_;
   this->shutdown_phase_ = ShutdownPhase::WAIT_DISPLAY;
@@ -991,7 +978,8 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
     return;
   }
 
-  this->display_->update_partial(0, 0, 480, 800);
+  this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC, papermono_epaper::RefreshKind::NORMAL,
+                                  "scheduler");
   if (this->is_in_quiet_hours_()) {
     ESP_LOGD(TAG, "Quiet-hours override tick: staying awake until inactive aligned tick");
     return;
@@ -1143,7 +1131,8 @@ void PaperMonoActivityComponent::complete_pmic_ha_final_full_() {
   if (this->display_ != nullptr) {
     ESP_LOGI(TAG, "PMIC boot: final HA FULL requested (ha_state=%d)",
              this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1);
-    this->display_->update();
+    this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC,
+                                    papermono_epaper::RefreshKind::MANDATORY_FULL, "pmic_ha_final_full");
   }
   this->pmic_ha_final_full_pending_ = false;
   this->clear_wake_recovery_flag_();
@@ -1259,7 +1248,8 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
       if (bucket != UINT32_MAX) {
         this->last_periodic_bucket_ = bucket;
       }
-      this->display_->update_partial(0, 0, 480, 800);
+      this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC,
+                                      papermono_epaper::RefreshKind::NORMAL, "periodic_wake");
     }
     this->request_light_sleep_(PowerTransitionSource::PERIODIC_WAKE);
     this->cancel_periodic_wake_recovery_();

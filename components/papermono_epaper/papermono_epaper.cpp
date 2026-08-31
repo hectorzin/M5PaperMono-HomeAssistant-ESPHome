@@ -23,6 +23,9 @@ namespace esphome::papermono_epaper {
 
 static const char *const TAG = "papermono_epaper";
 
+static constexpr uint8_t AUTO_FULL_THRESHOLD = 10;
+static constexpr uint8_t USER_FULL_THRESHOLD = 15;
+
 // SSD1677 commands used by the PaperMono OTP demo.
 static constexpr uint8_t CMD_DRIVER_OUTPUT = 0x01;
 static constexpr uint8_t CMD_BOOSTER = 0x0C;
@@ -220,18 +223,19 @@ void PaperMonoEpaper::dump_config() {
   if (this->full_update_every_ == 0) {
     ESP_LOGCONFIG(TAG,
                   "  Native: %ux%u\n"
-                  "  Full update every: disabled (explicit FULL only)\n"
+                  "  Full update every: legacy disabled (central policy: auto=%u user=%u)\n"
                   "  Mirror X: %s\n"
                   "  Mirror Y: %s",
-                  NATIVE_WIDTH, NATIVE_HEIGHT, YESNO(this->transform_ & TRANSFORM_MIRROR_X),
+                  NATIVE_WIDTH, NATIVE_HEIGHT, AUTO_FULL_THRESHOLD, USER_FULL_THRESHOLD,
+                  YESNO(this->transform_ & TRANSFORM_MIRROR_X),
                   YESNO(this->transform_ & TRANSFORM_MIRROR_Y));
   } else {
     ESP_LOGCONFIG(TAG,
                   "  Native: %ux%u\n"
-                  "  Full update every: %u partials\n"
+                  "  Full update every: legacy value %u (ignored; central policy: auto=%u user=%u)\n"
                   "  Mirror X: %s\n"
                   "  Mirror Y: %s",
-                  NATIVE_WIDTH, NATIVE_HEIGHT, this->full_update_every_,
+                  NATIVE_WIDTH, NATIVE_HEIGHT, this->full_update_every_, AUTO_FULL_THRESHOLD, USER_FULL_THRESHOLD,
                   YESNO(this->transform_ & TRANSFORM_MIRROR_X), YESNO(this->transform_ & TRANSFORM_MIRROR_Y));
   }
   LOG_PIN("  CS Pin: ", this->cs_);
@@ -324,13 +328,11 @@ void PaperMonoEpaper::add_partial_region(int x, int y, int width, int height) {
 }
 
 void PaperMonoEpaper::update() {
-  this->refresh_source_ = "update";
-  this->request_refresh_(true);
+  this->request_refresh(RefreshPolicy::AUTOMATIC, RefreshKind::MANDATORY_FULL, "update");
 }
 
 void PaperMonoEpaper::update_from_pmic_recovery() {
-  this->refresh_source_ = "pmic_recovery_complete";
-  this->request_refresh_(true);
+  this->request_refresh(RefreshPolicy::AUTOMATIC, RefreshKind::MANDATORY_FULL, "pmic_recovery_complete");
 }
 
 void PaperMonoEpaper::update_partial(int x, int y, int width, int height) {
@@ -339,38 +341,98 @@ void PaperMonoEpaper::update_partial(int x, int y, int width, int height) {
 }
 
 void PaperMonoEpaper::update_partial() {
-  this->refresh_source_ = "update_partial";
-  this->request_refresh_(false);
+  this->request_refresh(RefreshPolicy::AUTOMATIC, RefreshKind::NORMAL, "update_partial");
 }
 
 bool PaperMonoEpaper::is_idle() const { return this->state_ == State::IDLE; }
 
 bool PaperMonoEpaper::has_refresh_pending() const {
-  return this->must_force_pmic_mandatory_full_() || this->pending_update_ || this->pending_full_ ||
-         this->force_full_next_;
+  return this->must_force_pmic_mandatory_full_() || this->pending_refresh_.active;
 }
 
 bool PaperMonoEpaper::has_baseline() const { return this->baseline_ready_; }
 
-void PaperMonoEpaper::request_refresh_(bool full) {
+const char *PaperMonoEpaper::policy_label_(RefreshPolicy policy) {
+  return policy == RefreshPolicy::USER_INTERACTION ? "USER" : "AUTOMATIC";
+}
+
+uint8_t PaperMonoEpaper::policy_threshold_(RefreshPolicy policy) {
+  return policy == RefreshPolicy::USER_INTERACTION ? USER_FULL_THRESHOLD : AUTO_FULL_THRESHOLD;
+}
+
+RefreshPolicy PaperMonoEpaper::merge_pending_policy_(RefreshPolicy existing, RefreshPolicy incoming) {
+  // Mixed pending requests use the lowest threshold (AUTOMATIC=10 over USER=15).
+  if (existing == RefreshPolicy::AUTOMATIC || incoming == RefreshPolicy::AUTOMATIC) {
+    return RefreshPolicy::AUTOMATIC;
+  }
+  return RefreshPolicy::USER_INTERACTION;
+}
+
+RefreshKind PaperMonoEpaper::merge_pending_kind_(RefreshKind existing, RefreshKind incoming) {
+  if (existing == RefreshKind::MANDATORY_FULL || incoming == RefreshKind::MANDATORY_FULL) {
+    return RefreshKind::MANDATORY_FULL;
+  }
+  return RefreshKind::NORMAL;
+}
+
+bool PaperMonoEpaper::resolve_refresh_full_(RefreshKind kind, RefreshPolicy policy) const {
+  if (kind == RefreshKind::MANDATORY_FULL || this->must_force_pmic_mandatory_full_() || !this->baseline_ready_) {
+    return true;
+  }
+  return this->partial_count_ >= policy_threshold_(policy);
+}
+
+void PaperMonoEpaper::log_refresh_execute_(const char *source, RefreshPolicy policy, RefreshKind kind,
+                                             bool full) const {
+  const char *decision = full ? (kind == RefreshKind::MANDATORY_FULL || this->must_force_pmic_mandatory_full_()
+                                     ? "FULL_MANDATORY"
+                                     : "FULL_AUTO")
+                              : "PARTIAL";
+  ESP_LOGI(TAG, "Refresh execute: source=%s policy=%s count=%u decision=%s",
+           source != nullptr ? source : "unknown", policy_label_(policy), this->partial_count_, decision);
+}
+
+void PaperMonoEpaper::merge_pending_refresh_(RefreshPolicy policy, RefreshKind kind, const char *source) {
+  if (!this->pending_refresh_.active) {
+    this->pending_refresh_.policy = policy;
+    this->pending_refresh_.kind = kind;
+    this->pending_refresh_.source = source != nullptr ? source : "unknown";
+    this->pending_refresh_.active = true;
+    return;
+  }
+  this->pending_refresh_.policy = merge_pending_policy_(this->pending_refresh_.policy, policy);
+  this->pending_refresh_.kind = merge_pending_kind_(this->pending_refresh_.kind, kind);
+  if (source != nullptr) {
+    this->pending_refresh_.source = source;
+  }
+}
+
+void PaperMonoEpaper::execute_refresh_request_(RefreshPolicy policy, RefreshKind kind, const char *source) {
+  this->refresh_source_ = source != nullptr ? source : "unknown";
+  const bool full = this->resolve_refresh_full_(kind, policy);
+  this->log_refresh_execute_(this->refresh_source_, policy, kind, full);
+  this->begin_refresh_(full);
+}
+
+void PaperMonoEpaper::request_refresh(RefreshPolicy policy, RefreshKind kind, const char *source) {
   this->sync_pmic_mandatory_full_gate_();
 
   if (this->hw_recovery_failed_) {
     ESP_LOGW(TAG, "refresh blocked: EPD hardware recovery failed");
     return;
   }
-  if (this->must_force_pmic_mandatory_full_() && !full) {
+  RefreshKind effective_kind = kind;
+  if (this->must_force_pmic_mandatory_full_() && kind == RefreshKind::NORMAL) {
     if (!this->pmic_partial_blocked_logged_) {
       ESP_LOGI(TAG, "PMIC boot: PARTIAL request deferred until mandatory FULL (request_refresh)");
       this->pmic_partial_blocked_logged_ = true;
     }
-    full = true;
+    effective_kind = RefreshKind::MANDATORY_FULL;
   }
   if (this->recovery_pending_ || !this->hw_ready_for_refresh_) {
     if (this->must_force_pmic_mandatory_full_()) {
       this->do_update_();
-      this->pending_update_ = true;
-      this->pending_full_ = true;
+      this->merge_pending_refresh_(policy, RefreshKind::MANDATORY_FULL, source);
       if (!this->pmic_refresh_deferred_logged_) {
         ESP_LOGI(TAG, "PMIC boot: refresh deferred until initial FULL");
         this->pmic_refresh_deferred_logged_ = true;
@@ -381,26 +443,13 @@ void PaperMonoEpaper::request_refresh_(bool full) {
     return;
   }
 
-  if (!this->baseline_ready_) {
-    if (!full)
-      ESP_LOGW(TAG, "no monochrome baseline yet, next refresh will be FULL");
-    full = true;
-  }
-
   if (this->state_ != State::IDLE) {
-    ESP_LOGI(TAG, "refresh busy, coalescing pending update");
+    ESP_LOGD(TAG, "refresh busy, coalescing pending update");
     this->do_update_();
-    this->pending_update_ = true;
-    if (full || this->force_full_next_ || this->must_force_pmic_mandatory_full_())
-      this->pending_full_ = true;
+    this->merge_pending_refresh_(policy, effective_kind, source);
     return;
   }
-
-  if (this->force_full_next_)
-    full = true;
-  if (this->must_force_pmic_mandatory_full_())
-    full = true;
-  this->begin_refresh_(full);
+  this->execute_refresh_request_(policy, effective_kind, source);
 }
 
 void PaperMonoEpaper::begin_refresh_(bool full) {
@@ -409,18 +458,13 @@ void PaperMonoEpaper::begin_refresh_(bool full) {
   if (this->recovery_pending_ || !this->hw_ready_for_refresh_ || this->hw_recovery_failed_) {
     return;
   }
-  if (this->force_full_next_) {
-    full = true;
-    this->force_full_next_ = false;
-  }
   if (this->must_force_pmic_mandatory_full_()) {
     if (!full && !this->pmic_partial_blocked_logged_) {
       ESP_LOGI(TAG, "PMIC boot: PARTIAL request deferred until mandatory FULL (begin_refresh)");
       this->pmic_partial_blocked_logged_ = true;
     }
     full = true;
-    this->pending_update_ = false;
-    this->pending_full_ = false;
+    this->pending_refresh_.active = false;
   }
   this->full_refresh_ = full;
   if (full)
@@ -431,20 +475,13 @@ void PaperMonoEpaper::begin_refresh_(bool full) {
 }
 
 void PaperMonoEpaper::process_pending_refresh_() {
-  if (!this->pending_update_)
+  if (!this->pending_refresh_.active)
     return;
-
-  this->pending_update_ = false;
-  bool full = this->pending_full_;
-  this->pending_full_ = false;
-  if (this->force_full_next_)
-    full = true;
-  if (this->must_force_pmic_mandatory_full_())
-    full = true;
-
-  this->refresh_source_ = "pending";
-  ESP_LOGI(TAG, "processing pending update as %s", full ? "FULL" : "PARTIAL");
-  this->begin_refresh_(full);
+  const RefreshPolicy policy = this->pending_refresh_.policy;
+  const RefreshKind kind = this->pending_refresh_.kind;
+  const char *source = this->pending_refresh_.source;
+  this->pending_refresh_.active = false;
+  this->execute_refresh_request_(policy, kind, source);
 }
 
 void PaperMonoEpaper::set_state_(State state, uint16_t delay_ms) {
@@ -646,7 +683,6 @@ void PaperMonoEpaper::finish_refresh_(bool success) {
     if (this->full_refresh_) {
       this->baseline_ready_ = true;
       this->partial_count_ = 0;
-      this->force_full_next_ = false;
       if (this->pmic_initial_full_started_) {
         this->pmic_initial_full_started_ = false;
         this->pmic_initial_full_required_ = false;
@@ -663,15 +699,7 @@ void PaperMonoEpaper::finish_refresh_(bool success) {
       }
     } else {
       this->partial_count_++;
-      if (this->full_update_every_ > 0) {
-        ESP_LOGI(TAG, "partial count %u/%u", this->partial_count_, this->full_update_every_);
-        if (this->partial_count_ >= this->full_update_every_) {
-          this->force_full_next_ = true;
-          ESP_LOGI(TAG, "next refresh will be FULL");
-        }
-      } else {
-        ESP_LOGI(TAG, "partial count %u (auto FULL disabled)", this->partial_count_);
-      }
+      ESP_LOGD(TAG, "partial count %u", this->partial_count_);
     }
   }
   this->logical_region_count_ = 0;

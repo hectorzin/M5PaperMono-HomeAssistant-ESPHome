@@ -106,6 +106,7 @@ void PaperMonoActivityComponent::setup() {
   this->last_gpio_block_log_ms_ = 0;
   this->periodic_wake_recovery_timeout_logged_ = false;
   this->sleep_timeout_logged_ = false;
+  this->sleep_timeout_light_sleep_cycle_ = false;
   this->pending_power_source_ = PowerTransitionSource::SLEEP_TIMEOUT;
   this->light_sleep_timer_reason_ = LightSleepTimerReason::NORMAL_REFRESH;
 
@@ -169,11 +170,7 @@ void PaperMonoActivityComponent::loop() {
         ESP_LOGI(TAG, "Sleep timeout reached after %u s inactivity", configured_sleep_timeout_ms / 1000U);
         this->sleep_timeout_logged_ = true;
       }
-      if (this->is_in_quiet_hours_()) {
-        this->request_quiet_hours_shutdown_(PowerTransitionSource::SLEEP_TIMEOUT);
-      } else {
-        this->request_light_sleep_(PowerTransitionSource::SLEEP_TIMEOUT);
-      }
+      this->request_light_sleep_(PowerTransitionSource::SLEEP_TIMEOUT);
     }
   }
 
@@ -219,6 +216,7 @@ void PaperMonoActivityComponent::clear_wake_recovery_flag_() {
 
 void PaperMonoActivityComponent::cancel_light_sleep_() {
   this->light_sleep_pending_ = false;
+  this->sleep_timeout_light_sleep_cycle_ = false;
   this->periodic_wake_phase_ = PeriodicWakePhase::NONE;
   this->periodic_wake_settle_start_ms_ = 0;
   this->ha_manual_light_sleep_armed_ = false;
@@ -747,6 +745,7 @@ void PaperMonoActivityComponent::sync_battery_display_for_shutdown_() {
 
 void PaperMonoActivityComponent::request_quiet_hours_shutdown_(PowerTransitionSource source) {
   ESP_LOGI(TAG, "Power transition request: source=%s target=QUIET_SHUTDOWN", power_source_to_string_(source));
+  this->sleep_timeout_light_sleep_cycle_ = false;
   if (this->shutdown_phase_ != ShutdownPhase::NONE) {
     ESP_LOGI(TAG, "Quiet shutdown already in progress; ignoring duplicate request");
     return;
@@ -981,7 +980,7 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
     this->last_periodic_bucket_ = bucket;
   }
 
-  if (quiet_sleep_display) {
+  if (quiet_sleep_display && !this->sleep_timeout_light_sleep_cycle_) {
     this->request_quiet_hours_shutdown_(PowerTransitionSource::SCHEDULER);
     return;
   }
@@ -1072,11 +1071,28 @@ void PaperMonoActivityComponent::request_shutdown_until(const std::string &wake_
   this->request_quiet_hours_shutdown_(PowerTransitionSource::HOME_ASSISTANT);
 }
 
+bool PaperMonoActivityComponent::suppress_quiet_hours_sleep_redirect_(PowerTransitionSource source) const {
+  if (source == PowerTransitionSource::SLEEP_TIMEOUT) {
+    return true;
+  }
+  if (source == PowerTransitionSource::HOME_ASSISTANT && this->ha_manual_light_sleep_armed_) {
+    return true;
+  }
+  if (this->sleep_timeout_light_sleep_cycle_ &&
+      (source == PowerTransitionSource::PERIODIC_WAKE || source == PowerTransitionSource::SCHEDULER)) {
+    return true;
+  }
+  return false;
+}
+
 void PaperMonoActivityComponent::request_light_sleep_(PowerTransitionSource source) {
-  if (!(source == PowerTransitionSource::HOME_ASSISTANT && this->ha_manual_light_sleep_armed_) &&
-      this->is_in_quiet_hours_()) {
+  if (!this->suppress_quiet_hours_sleep_redirect_(source) && this->is_in_quiet_hours_()) {
     this->request_quiet_hours_shutdown_(source);
     return;
+  }
+
+  if (source == PowerTransitionSource::SLEEP_TIMEOUT) {
+    this->sleep_timeout_light_sleep_cycle_ = true;
   }
 
   ESP_LOGI(TAG, "Power transition request: source=%s target=LIGHT_SLEEP", power_source_to_string_(source));
@@ -1361,8 +1377,7 @@ void PaperMonoActivityComponent::enable_wifi_after_wake_(bool timer_wake) {
 }
 
 void PaperMonoActivityComponent::enter_light_sleep_() {
-  if (!(this->pending_power_source_ == PowerTransitionSource::HOME_ASSISTANT && this->ha_manual_light_sleep_armed_) &&
-      this->is_in_quiet_hours_()) {
+  if (!this->suppress_quiet_hours_sleep_redirect_(this->pending_power_source_) && this->is_in_quiet_hours_()) {
     ESP_LOGI(TAG, "Quiet hours active at sleep entry; routing to PMIC shutdown");
     this->light_sleep_pending_ = false;
     this->request_quiet_hours_shutdown_(this->pending_power_source_);
@@ -1464,7 +1479,8 @@ void PaperMonoActivityComponent::handle_light_sleep_wake_(esp_sleep_wakeup_cause
     }
 
     const bool quiet_hours_now = this->is_in_quiet_hours_();
-    if (timer_reason == LightSleepTimerReason::QUIET_HOURS_START || quiet_hours_now) {
+    if (timer_reason == LightSleepTimerReason::QUIET_HOURS_START ||
+        (quiet_hours_now && !this->sleep_timeout_light_sleep_cycle_)) {
       if (quiet_hours_now) {
         const ESPTime runtime_now = this->time_ != nullptr ? this->time_->now() : ESPTime();
         ESP_LOGI(TAG, "Quiet hours reached after light-sleep timer wake: start=%s end=%s now=%02d:%02d:%02d",

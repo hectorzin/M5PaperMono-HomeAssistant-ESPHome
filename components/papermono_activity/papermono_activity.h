@@ -185,6 +185,7 @@ class PaperMonoActivityComponent : public Component {
   bool begin_quiet_hours_shutdown_();
   void cancel_shutdown_();
   void prepare_controls_exit_for_sleep_();
+  bool suppress_quiet_hours_sleep_redirect_(PowerTransitionSource source) const;
   uint32_t timeout_ms_() const {
     const uint32_t seconds = this->frontlight_timeout_seconds_ != nullptr ? this->frontlight_timeout_seconds_->value() : 30U;
     return seconds == 0 ? 30000U : seconds * 1000U;
@@ -264,6 +265,7 @@ class PaperMonoActivityComponent : public Component {
   PowerTransitionSource pending_power_source_{PowerTransitionSource::SLEEP_TIMEOUT};
   LightSleepTimerReason light_sleep_timer_reason_{LightSleepTimerReason::NORMAL_REFRESH};
   bool ha_manual_light_sleep_armed_{false};
+  bool sleep_timeout_light_sleep_cycle_{false};
   uint32_t manual_light_wake_seconds_{0};
   uint32_t manual_shutdown_wake_seconds_{0};
   uint32_t last_motion_log_ms_{0};

@@ -1,6 +1,8 @@
 # Native ESPHome API. The api.connected condition in the Home Assistant runtime
 # package is the authoritative connection signal.
 api:
+  homeassistant_states: true
+  homeassistant_services: true
   actions:
     - action: sleep_now
       variables:

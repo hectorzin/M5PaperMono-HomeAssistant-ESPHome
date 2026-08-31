@@ -12,7 +12,10 @@ esphome:
       then:
         - lambda: |-
             if (id(epaper_display).is_hw_ready_for_refresh()) {
-              id(epaper_display).update();
+              id(epaper_display).request_refresh(
+                  esphome::papermono_epaper::RefreshPolicy::AUTOMATIC,
+                  esphome::papermono_epaper::RefreshKind::MANDATORY_FULL,
+                  "boot");
             }
 
 logger:

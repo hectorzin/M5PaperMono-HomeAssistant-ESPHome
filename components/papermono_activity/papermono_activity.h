@@ -148,8 +148,6 @@ class PaperMonoActivityComponent : public Component {
   void turn_off_timeout_();
   void on_pickup_transition_();
   bool in_controls_view_() const;
-  void request_screensaver_refresh_policy_();
-  void request_controls_refresh_policy_();
   void cancel_light_sleep_();
   void cancel_periodic_wake_recovery_();
   void clear_wake_recovery_flag_();

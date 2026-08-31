@@ -16,29 +16,16 @@ substitutions:
   ha_battery_discharge_entity: sensor.ingeteam_battery_discharging_power
   ha_battery_soc_entity: sensor.ingeteam_battery_state_of_charge
 
-  # Controls are declarative. Slots 1 and 2 are the initial configuration;
-  # slots 3..6 are intentionally empty.
-  ha_control_slot_1_type: climate
-  ha_control_slot_1_entity: ${ha_control_climate_entity}
-  ha_control_slot_1_name: Clima
-  ha_control_slot_2_type: light
-  ha_control_slot_2_entity: ${ha_control_light_entity}
-  ha_control_slot_2_name: Salon
-  ha_control_slot_3_type: none
-  ha_control_slot_3_name: ""
-  ha_control_slot_4_type: none
-  ha_control_slot_4_name: ""
-  ha_control_slot_5_type: none
-  ha_control_slot_5_name: ""
-  ha_control_slot_6_type: none
-  ha_control_slot_6_name: ""
-
-  # Source entities retained for the first controls implementation.
-  ha_control_climate_entity: climate.ac_salon_inteligente
-  ha_control_light_entity: light.sofa
-  ha_control_cover_entity: cover.persiana_jardin
-  ha_control_vacuum_entity: vacuum.lefant_m210_pro_omni_3
-  ha_control_climate_name: Clima
-  ha_control_light_name: Luces
-  ha_control_cover_name: Persiana
-  ha_control_vacuum_name: Robot
+controls:
+  id: controls_id
+  display_id: epaper_display
+  controls_view: controls_view
+  ha_connection_state: ha_connection_state
+  controls:
+    - entity_id: climate.ac_salon_inteligente
+      name: Clima
+    - entity_id: light.sofa
+      name: Luces
+    - entity_id: cover.persiana_jardin
+    - entity_id: vacuum.lefant_m210_pro_omni_3
+      name: Robot

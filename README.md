@@ -25,6 +25,19 @@ La primera compilación ESPHome/ESP-IDF descarga varios GB de toolchain; requier
 
 `paper_mono.yaml` es el punto de entrada y enumera los paquetes que forman el firmware. Las entidades que debe adaptar cada usuario permanecen centralizadas en `config/home_assistant.yaml`. La configuracion funcional se organiza en `packages/` (nucleo, conectividad, hardware, Home Assistant y UI), mientras que `components/papermono_epaper/` conserva el driver e-paper especifico.
 
+Los controles se configuran como una lista estructurada; el dominio se deduce del prefijo de `entity_id` y se admiten hasta seis entradas:
+
+```yaml
+controls:
+  - entity_id: climate.ac_salon_inteligente
+    name: Clima
+  - entity_id: light.mesa
+    name: Luces
+  - entity_id: cover.persiana_jardin
+  - entity_id: vacuum.lefant_m210_pro_omni_3
+    name: Robot
+```
+
 ## Validar y compilar (sin flashear)
 
 ```bash

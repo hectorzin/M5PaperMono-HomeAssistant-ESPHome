@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
+#include <cctype>
 
 #include "esphome/core/log.h"
 
@@ -11,12 +13,13 @@ static const char *const TAG = "controls";
 
 void Controls::add_control(uint8_t index, const char *entity_id, const char *name, const char *domain,
                            text_sensor::TextSensor *state, text_sensor::TextSensor *friendly_name,
-                           text_sensor::TextSensor *modes, sensor::Sensor *brightness,
+                           text_sensor::TextSensor *modes, text_sensor::TextSensor *hs_color,
+                           sensor::Sensor *brightness,
                            sensor::Sensor *current_temperature, sensor::Sensor *min_temperature,
                            sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
                            sensor::Sensor *current_position) {
   if (index >= entries_.size()) return;
-  entries_[index] = {entity_id, name, domain, state, friendly_name, modes, brightness,
+  entries_[index] = {entity_id, name, domain, state, friendly_name, modes, hs_color, brightness,
                      current_temperature, min_temperature, max_temperature, target_temperature,
                      current_position};
   count_ = std::max(count_, static_cast<size_t>(index + 1));
@@ -40,6 +43,38 @@ void Controls::setup() {
       entry.friendly_name->add_on_state_callback([this](const std::string &) { refresh_(); });
     if (entry.modes != nullptr)
       entry.modes->add_on_state_callback([this](const std::string &) { refresh_(); });
+    if (entry.hs_color != nullptr)
+      entry.hs_color->add_on_state_callback([this, i](const std::string &value) {
+        float parsed[2] = {0.0f, 0.0f};
+        int found = 0;
+        const char *cursor = value.c_str();
+        while (*cursor != '\0' && found < 2) {
+          char *end = nullptr;
+          const float number = std::strtof(cursor, &end);
+          if (end != cursor) {
+            parsed[found++] = number;
+            cursor = end;
+          } else {
+            cursor++;
+          }
+        }
+        if (found == 2 && parsed[0] >= 0.0f && parsed[0] <= 360.0f &&
+            parsed[1] >= 0.0f && parsed[1] <= 100.0f) {
+          hue_[i] = parsed[0];
+          saturation_[i] = parsed[1];
+          if (parsed[1] < 10.0f) {
+            color_step_[i] = 2;  // WHITE is a selector state, not a hue.
+          } else {
+            chromatic_saturation_[i] = parsed[1];
+            color_step_[i] = (static_cast<int>(std::floor((parsed[0] + 30.0f) / 60.0f)) % 6 + 6) % 6;
+            if (color_step_[i] >= 2) color_step_[i]++;
+          }
+          color_valid_[i] = true;
+        } else {
+          color_valid_[i] = false;
+        }
+        refresh_();
+      });
     if (entry.brightness != nullptr)
       entry.brightness->add_on_state_callback([this](float) { refresh_(); });
     if (entry.current_temperature != nullptr)
@@ -91,6 +126,24 @@ bool Controls::friendly_valid(size_t index) const { auto *e = entry_(index); ret
 std::string Controls::friendly_at(size_t index) const { auto *e = entry_(index); return e != nullptr && e->friendly_name != nullptr && e->friendly_name->has_state() ? e->friendly_name->state : ""; }
 bool Controls::modes_valid(size_t index) const { auto *e = entry_(index); return e != nullptr && valid_text_(e->modes); }
 std::string Controls::modes_at(size_t index) const { auto *e = entry_(index); return e != nullptr && e->modes != nullptr && e->modes->has_state() ? e->modes->state : ""; }
+bool Controls::color_capable(size_t index) const {
+  if (!modes_valid(index)) return false;
+  std::string raw = modes_at(index);
+  std::string token;
+  for (size_t i = 0; i <= raw.size(); i++) {
+    const char c = i < raw.size() ? raw[i] : '\0';
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+      token += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    } else if (!token.empty()) {
+      if (token == "hs" || token == "rgb" || token == "rgbw" || token == "rgbww" || token == "xy") return true;
+      token.clear();
+    }
+  }
+  return false;
+}
+bool Controls::color_valid(size_t index) const { return index < count_ && color_valid_[index]; }
+float Controls::hue_at(size_t index) const { return index < count_ ? hue_[index] : 0.0f; }
+float Controls::saturation_at(size_t index) const { return index < count_ ? saturation_[index] : 0.0f; }
 bool Controls::number_valid(size_t index, const char *field) const {
   auto *e = entry_(index); if (e == nullptr) return false;
   const sensor::Sensor *s = nullptr;

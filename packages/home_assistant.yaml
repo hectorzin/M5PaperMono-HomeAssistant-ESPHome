@@ -193,6 +193,117 @@ script:
               float value = id(controls_id).number_valid(slot, "brightness")
                   ? id(controls_id).number_at(slot, "brightness") : 128.0f;
               return std::min(255.0f, value + 32.0f);
+  - id: color_preview_apply
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          const bool color_valid = id(controls_id).color_valid(slot);
+          const int step = id(controls_id).color_step_at(slot);
+          const float hue = color_valid ? id(controls_id).hue_at(slot) : 0.0f;
+          const float saturation = color_valid ? id(controls_id).saturation_at(slot) : 100.0f;
+          const bool white = color_valid && step == 2;
+          const float h = std::fmod(hue + 360.0f, 360.0f);
+          bool red = color_valid && white, green = color_valid && white, blue = color_valid && white;
+          if (color_valid && !white) {
+            // The physical LED has six canonical families. For an arbitrary
+            // HA hue, preview the nearest canonical family; hue stepping below
+            // always lands exactly on one of these six values.
+            const int family = (static_cast<int>(std::floor((h + 30.0f) / 60.0f)) % 6 + 6) % 6;
+            red = family == 0 || family == 1 || family == 5;
+            green = family == 1 || family == 2 || family == 3;
+            blue = family == 3 || family == 4 || family == 5;
+          }
+          id(m5pm1_pmu).set_status_red_led(red);
+          if (green) id(status_led_green).turn_on(); else id(status_led_green).turn_off();
+          if (blue) id(color_preview_blue).turn_on(); else id(color_preview_blue).turn_off();
+          ESP_LOGI("color", "Preview slot=%d hue=%.1f sat=%.1f RGB=%d%d%d", slot, hue, saturation, red, green, blue);
+  - id: color_preview_send
+    parameters:
+      slot: int
+    then:
+      - homeassistant.action:
+          action: light.turn_on
+          data:
+            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          data_template:
+            hs_color: "{{ [hue, saturation] }}"
+          variables:
+            hue: !lambda 'return id(controls_id).color_valid(slot) ? id(controls_id).hue_at(slot) : 0.0f;'
+            saturation: !lambda 'return id(controls_id).color_valid(slot) ? id(controls_id).saturation_at(slot) : 100.0f;'
+  - id: control_light_color_enter
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          const int previous = id(active_color_preview_slot);
+          if (previous >= 0 && previous != slot) id(controls_id).set_color_edit_mode(previous, false);
+          id(active_color_preview_slot) = slot;
+          id(controls_id).set_color_edit_mode(slot, true);
+          id(controls_id).set_color_preview_started(slot, false);
+      - script.execute:
+          id: color_preview_apply
+          slot: !lambda 'return slot;'
+  - id: control_light_color_exit
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          id(controls_id).set_color_edit_mode(slot, false);
+          id(controls_id).set_color_preview_started(slot, false);
+          if (id(active_color_preview_slot) == slot) id(active_color_preview_slot) = -1;
+          id(color_preview_blue).turn_off();
+          // The preview wrote hardware directly; force the normal policy to write
+          // both cached channels again on the next status update.
+          id(status_led_red_hw_on) = !id(status_led_red_hw_on);
+          id(status_led_green_hw_on) = !id(status_led_green_hw_on);
+      - script.execute: status_led_update
+  - id: control_light_hue_down
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          static const char *names[] = {"RED", "YELLOW", "WHITE", "GREEN", "CYAN", "BLUE", "MAGENTA"};
+          static const float hues[] = {0.0f, 60.0f, 0.0f, 120.0f, 180.0f, 240.0f, 300.0f};
+          const int old_step = id(controls_id).color_valid(slot) ? id(controls_id).color_step_at(slot) : 0;
+          const int target_step = (old_step + 6) % 7;
+          const float target_hue = target_step == 2 ? id(controls_id).hue_at(slot) : hues[target_step];
+          const float target_sat = target_step == 2 ? 0.0f : id(controls_id).chromatic_saturation_at(slot);
+          id(controls_id).set_color_step(slot, target_step, target_hue, target_sat);
+          const bool red = target_step == 0 || target_step == 1 || target_step == 6 || target_step == 2;
+          const bool green = target_step == 1 || target_step == 3 || target_step == 4 || target_step == 2;
+          const bool blue = target_step == 4 || target_step == 5 || target_step == 6 || target_step == 2;
+          ESP_LOGI("color", "Color step: slot=%d direction=- old=%s target=%s hue=%.0f sat=%.0f RGB=%d%d%d",
+                   slot, names[old_step], names[target_step], target_hue, target_sat, red, green, blue);
+      - script.execute:
+          id: color_preview_apply
+          slot: !lambda 'return slot;'
+      - script.execute:
+          id: color_preview_send
+          slot: !lambda 'return slot;'
+  - id: control_light_hue_up
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          static const char *names[] = {"RED", "YELLOW", "WHITE", "GREEN", "CYAN", "BLUE", "MAGENTA"};
+          static const float hues[] = {0.0f, 60.0f, 0.0f, 120.0f, 180.0f, 240.0f, 300.0f};
+          const int old_step = id(controls_id).color_valid(slot) ? id(controls_id).color_step_at(slot) : 0;
+          const int target_step = (old_step + 1) % 7;
+          const float target_hue = target_step == 2 ? id(controls_id).hue_at(slot) : hues[target_step];
+          const float target_sat = target_step == 2 ? 0.0f : id(controls_id).chromatic_saturation_at(slot);
+          id(controls_id).set_color_step(slot, target_step, target_hue, target_sat);
+          const bool red = target_step == 0 || target_step == 1 || target_step == 6 || target_step == 2;
+          const bool green = target_step == 1 || target_step == 3 || target_step == 4 || target_step == 2;
+          const bool blue = target_step == 4 || target_step == 5 || target_step == 6 || target_step == 2;
+          ESP_LOGI("color", "Color step: slot=%d direction=+ old=%s target=%s hue=%.0f sat=%.0f RGB=%d%d%d",
+                   slot, names[old_step], names[target_step], target_hue, target_sat, red, green, blue);
+      - script.execute:
+          id: color_preview_apply
+          slot: !lambda 'return slot;'
+      - script.execute:
+          id: color_preview_send
+          slot: !lambda 'return slot;'
   - id: control_climate_temperature_down
     parameters:
       slot: int

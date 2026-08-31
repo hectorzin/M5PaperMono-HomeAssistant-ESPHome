@@ -10,7 +10,21 @@ switch:
       mode:
         output: true
 
+  - platform: gpio
+    id: color_preview_blue
+    internal: true
+    restore_mode: ALWAYS_OFF
+    pin:
+      m5ioe1_id: m5ioe1_hub
+      number: 8
+      mode:
+        output: true
+
 globals:
+  - id: active_color_preview_slot
+    type: int
+    restore_value: no
+    initial_value: '-1'
   - id: status_led_mode
     type: int
     restore_value: no
@@ -102,18 +116,22 @@ script:
               break;
           }
 
-          if (red_on != id(status_led_red_hw_on)) {
-            id(m5pm1_pmu).set_status_red_led(red_on);
-            id(status_led_red_hw_on) = red_on;
-          }
-          if (green_on != id(status_led_green_hw_on)) {
-            if (green_on) {
-              id(status_led_green).turn_on();
-            } else {
-              id(status_led_green).turn_off();
+          // A color preview owns the physical RGB LED temporarily. Keep computing
+          // the normal policy above, but defer all physical status writes.
+          if (id(active_color_preview_slot) < 0) {
+            if (red_on != id(status_led_red_hw_on)) {
+              id(m5pm1_pmu).set_status_red_led(red_on);
+              id(status_led_red_hw_on) = red_on;
             }
-            ESP_LOGI("status_led", "Status LED green: %s", green_on ? "ON" : "OFF");
-            id(status_led_green_hw_on) = green_on;
+            if (green_on != id(status_led_green_hw_on)) {
+              if (green_on) {
+                id(status_led_green).turn_on();
+              } else {
+                id(status_led_green).turn_off();
+              }
+              ESP_LOGI("status_led", "Status LED green: %s", green_on ? "ON" : "OFF");
+              id(status_led_green_hw_on) = green_on;
+            }
           }
 
 interval:

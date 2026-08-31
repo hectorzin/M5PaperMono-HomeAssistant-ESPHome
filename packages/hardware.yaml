@@ -190,12 +190,23 @@ touchscreen:
           } else if (std::string(slot_type) == "light") {
             if (light_supports_brightness()) {
               const bool light_on = id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";
-              if (!light_on && local_y >= 55 && local_y < 160) {
-                ESP_LOGI("control", "Controls action: slot=2 light toggle");
-                id(control_light_toggle).execute(slot);
+              const bool color_capable = id(controls_id).color_capable(slot);
+              const bool center_tap = local_x >= 56 && local_x < 149 && local_y >= 55 && local_y < 160;
+              if (color_capable && center_tap) {
+                if (id(controls_id).color_edit_mode_at(slot)) {
+                  ESP_LOGI("control", "Controls action: slot=%d color_exit", slot);
+                  id(control_light_color_exit).execute(slot);
+                } else {
+                  ESP_LOGI("control", "Controls action: slot=%d color_enter", slot);
+                  id(control_light_color_enter).execute(slot);
+                }
                 action_detected = true;
               } else if (light_on && local_y >= 160 && local_y < 205) {
-                if (local_x < 70) {
+                if (id(controls_id).color_edit_mode_at(slot)) {
+                  if (local_x < 70) id(control_light_hue_down).execute(slot);
+                  else if (local_x >= 135) id(control_light_hue_up).execute(slot);
+                  action_detected = true;
+                } else if (local_x < 70) {
                   ESP_LOGI("control", "Controls action: slot=2 light brightness_down");
                   id(control_light_brightness_down).execute(slot);
                   action_detected = true;
@@ -208,6 +219,10 @@ touchscreen:
                   id(control_light_brightness_up).execute(slot);
                   action_detected = true;
                 }
+              } else if (!light_on && local_y >= 55 && local_y < 160) {
+                ESP_LOGI("control", "Controls action: slot=2 light toggle");
+                id(control_light_toggle).execute(slot);
+                action_detected = true;
               }
             } else if (local_y >= 55 && local_y < 205) {
               ESP_LOGI("control", "Controls action: slot=2 light toggle");

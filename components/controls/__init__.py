@@ -72,6 +72,9 @@ def _declare_control_sensor_ids(controls):
             entry[CONF_BRIGHTNESS_SENSOR_ID] = cv.declare_id(ha_sensor.HomeassistantSensor)(
                 f"{prefix}_brightness"
             )
+            entry["hs_color_sensor_id"] = cv.declare_id(ha_text_sensor.HomeassistantTextSensor)(
+                f"{prefix}_hs_color"
+            )
         elif domain == "cover":
             entry[CONF_CURRENT_POSITION_SENSOR_ID] = cv.declare_id(ha_sensor.HomeassistantSensor)(
                 f"{prefix}_current_position"
@@ -133,7 +136,7 @@ async def to_code(config):
 
         state = await _make_text(control[CONF_STATE_SENSOR_ID], entity)
         friendly = await _make_text(control[CONF_FRIENDLY_NAME_SENSOR_ID], entity, "friendly_name")
-        modes = brightness = current = minimum = maximum = target = current_position = cg.nullptr
+        modes = brightness = hs_color = current = minimum = maximum = target = current_position = cg.nullptr
 
         print(f"[controls]   state\n[controls]   friendly_name")
         if domain == "climate":
@@ -146,7 +149,8 @@ async def to_code(config):
         elif domain == "light":
             modes = await _make_text(control[CONF_MODES_SENSOR_ID], entity, "supported_color_modes")
             brightness = await _make_number(control[CONF_BRIGHTNESS_SENSOR_ID], entity, "brightness")
-            print("[controls]   supported_color_modes\n[controls]   brightness")
+            hs_color = await _make_text(control["hs_color_sensor_id"], entity, "hs_color")
+            print("[controls]   supported_color_modes\n[controls]   brightness\n[controls]   hs_color")
         elif domain == "cover":
             current_position = await _make_number(control[CONF_CURRENT_POSITION_SENSOR_ID], entity, "current_position")
             print("[controls]   current_position")
@@ -154,4 +158,5 @@ async def to_code(config):
             print(f"[controls]   no domain-specific attributes for {domain}")
 
         cg.add(var.add_control(index, entity, control[CONF_NAME], domain, state, friendly, modes,
+                               hs_color,
                                brightness, current, minimum, maximum, target, current_position))

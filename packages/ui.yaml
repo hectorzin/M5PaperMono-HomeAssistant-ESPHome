@@ -737,6 +737,8 @@ display:
             const float brightness = brightness_valid ? id(controls_id).number_at(index, "brightness") / 255.0f : 0.0f;
             if (on) {
               draw_percentage_arc(x, y, brightness, brightness_valid);
+              if (id(controls_id).color_edit_mode_at(index))
+                it.print(x + 102, y + 61, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "COLOR");
               if (brightness_valid) it.printf(x + 102, y + 82, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", brightness * 100.0f);
               button(x + 10, y + 165, "-"); button_icon(x + 75, y + 165, id(control_light_icon)); button(x + 140, y + 165, "+");
             } else {

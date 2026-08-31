@@ -17,6 +17,27 @@ text_sensor:
             id(ha_control_climate_last_active_mode) = x;
       - script.execute: controls_refresh_partial
   - platform: homeassistant
+    id: ha_control_climate_hvac_modes
+    entity_id: ${ha_control_climate_entity}
+    attribute: hvac_modes
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
+    id: ha_control_climate_friendly_name
+    entity_id: ${ha_control_climate_entity}
+    attribute: friendly_name
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
+    id: ha_control_light_friendly_name
+    entity_id: ${ha_control_light_entity}
+    attribute: friendly_name
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
     id: ha_control_light_supported_color_modes
     entity_id: ${ha_control_light_entity}
     attribute: supported_color_modes
@@ -47,6 +68,20 @@ sensor:
     id: ha_control_climate_target_temperature
     entity_id: ${ha_control_climate_entity}
     attribute: temperature
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
+    id: ha_control_climate_min_temperature
+    entity_id: ${ha_control_climate_entity}
+    attribute: min_temp
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
+    id: ha_control_climate_max_temperature
+    entity_id: ${ha_control_climate_entity}
+    attribute: max_temp
     internal: true
     on_value:
       - script.execute: controls_refresh_partial
@@ -252,6 +287,18 @@ script:
             temperature: !lambda |-
               return id(ha_control_climate_target_temperature).has_state()
                   ? id(ha_control_climate_target_temperature).state + 0.5f : 21.0f;
+  - id: control_climate_set_hvac_mode
+    parameters:
+      mode: string
+    then:
+      - lambda: |-
+          ESP_LOGI("control", "Controls action: climate set_hvac_mode=%s", mode.c_str());
+      - homeassistant.action:
+          action: climate.set_hvac_mode
+          data:
+            entity_id: ${ha_control_climate_entity}
+          data_template:
+            hvac_mode: !lambda 'return mode;'
   - id: control_climate_power_toggle
     then:
       - if:

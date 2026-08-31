@@ -183,6 +183,26 @@ image:
     resize: 52x52
     type: grayscale
     transparency: alpha_channel
+  - file: mdi:robot-vacuum
+    id: control_vacuum_icon
+    resize: 80x80
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:play
+    id: control_vacuum_start_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:pause
+    id: control_vacuum_pause_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:home
+    id: control_vacuum_return_to_base_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
   - file: mdi:arrow-up
     id: control_cover_open_icon
     resize: 28x28
@@ -739,6 +759,27 @@ display:
           button_icon(x + 75, y + 165, id(control_cover_stop_icon));
           button_icon(x + 140, y + 165, id(control_cover_close_icon));
         };
+        auto draw_vacuum = [&](size_t index, int x, int y) {
+          card(x, y);
+          const std::string vacuum_name = id(controls_id).resolved_name_at(index);
+          it.printf(x + 102, y + 12, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", vacuum_name.c_str());
+          std::string state = id(controls_id).state_at(index);
+          if (state.empty()) state = "unknown";
+          for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+          const char *status = "Desconocido";
+          if (state == "cleaning") status = "Limpiando";
+          else if (state == "docked") status = "En base";
+          else if (state == "paused") status = "Pausado";
+          else if (state == "idle") status = "Listo";
+          else if (state == "returning") status = "Volviendo";
+          else if (state == "error") status = "Error";
+          else if (state == "unavailable") status = "No disponible";
+          it.image(x + 102, y + 91, id(control_vacuum_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+          it.printf(x + 102, y + 137, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", status);
+          button_icon(x + 10, y + 165, id(control_vacuum_start_icon));
+          button_icon(x + 75, y + 165, id(control_vacuum_pause_icon));
+          button_icon(x + 140, y + 165, id(control_vacuum_return_to_base_icon));
+        };
         for (size_t index = 0; index < 6; index++) {
           const int x = card_x[index % 2];
           const int y = card_y[index / 2];
@@ -746,6 +787,7 @@ display:
           if (type == "climate") draw_climate(index, x, y);
           else if (type == "light") draw_light(index, x, y);
           else if (type == "cover") draw_cover(index, x, y);
+          else if (type == "vacuum") draw_vacuum(index, x, y);
           else draw_empty(x, y);
         }
       }

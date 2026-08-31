@@ -225,6 +225,17 @@ touchscreen:
               id(control_cover_close).execute(slot);
               action_detected = true;
             }
+          } else if (std::string(slot_type) == "vacuum" && local_y >= 160 && local_y < 205) {
+            if (local_x < 70) {
+              id(control_vacuum_start).execute(slot);
+              action_detected = true;
+            } else if (local_x < 135) {
+              id(control_vacuum_pause).execute(slot);
+              action_detected = true;
+            } else {
+              id(control_vacuum_return_to_base).execute(slot);
+              action_detected = true;
+            }
           }
           if (!action_detected)
             ESP_LOGI("control", "Controls touch: slot=%d no action", slot);

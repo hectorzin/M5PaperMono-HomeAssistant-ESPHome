@@ -288,6 +288,36 @@ script:
           action: cover.close_cover
           data:
             entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+  - id: control_vacuum_start
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          ESP_LOGI("control", "HA action: vacuum.start entity=%s", id(controls_id).entity_id_at(slot));
+      - homeassistant.action:
+          action: vacuum.start
+          data:
+            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+  - id: control_vacuum_pause
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          ESP_LOGI("control", "HA action: vacuum.pause entity=%s", id(controls_id).entity_id_at(slot));
+      - homeassistant.action:
+          action: vacuum.pause
+          data:
+            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+  - id: control_vacuum_return_to_base
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          ESP_LOGI("control", "HA action: vacuum.return_to_base entity=%s", id(controls_id).entity_id_at(slot));
+      - homeassistant.action:
+          action: vacuum.return_to_base
+          data:
+            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
 
 # Control state arrivals request a coalesced PARTIAL only while the controls
 # page is visible; the renderer still uses the cached HA states on every draw.

@@ -83,8 +83,10 @@ touchscreen:
       - lambda: |-
           const int x = touch.x;
           const int y = touch.y;
-          static const int CARD_X[] = {28, 247, 28, 247};
-          static const int CARD_Y[] = {135, 135, 375, 375};
+          if (static_cast<int32_t>(millis() - id(controls_boot_touch_guard_until)) < 0)
+            return;
+          static const int CARD_X[] = {28, 247};
+          static const int CARD_Y[] = {115, 340, 565};
           const int CARD_W = 205;
           const int CARD_H = 210;
 
@@ -95,7 +97,7 @@ touchscreen:
             id(papermono_activity_hub).enter_controls();
             return;
           }
-          if (y >= 660) {
+          if (y < 100) {
             id(controls_view) = false;
             id(selected_control) = -1;
             ESP_LOGI("control", "controls -> screensaver");
@@ -103,35 +105,74 @@ touchscreen:
             return;
           }
 
-          int pressed = -1;
-          if (x >= 28 && x < 233 && y >= 135 && y < 345) {
-            pressed = 0;
-            ESP_LOGI("control", "pressed Climate");
-          } else if (x >= 247 && x < 452 && y >= 135 && y < 345) {
-            pressed = 1;
-            ESP_LOGI("control", "pressed Lights");
-          } else if (x >= 28 && x < 233 && y >= 375 && y < 585) {
-            pressed = 2;
-            ESP_LOGI("control", "pressed Blinds");
-          } else if (x >= 247 && x < 452 && y >= 375 && y < 585) {
-            pressed = 3;
-            ESP_LOGI("control", "pressed Robot");
-          }
-          if (pressed < 0)
+          int column = -1;
+          if (x >= CARD_X[0] && x < CARD_X[0] + CARD_W) column = 0;
+          else if (x >= CARD_X[1] && x < CARD_X[1] + CARD_W) column = 1;
+          const int row = y >= CARD_Y[0] && y < CARD_Y[0] + CARD_H ? 0 :
+                          y >= CARD_Y[1] && y < CARD_Y[1] + CARD_H ? 1 :
+                          y >= CARD_Y[2] && y < CARD_Y[2] + CARD_H ? 2 : -1;
+          if (column < 0 || row < 0)
             return;
-
-          const int previous = id(selected_control);
-          if (pressed == previous)
-            return;
-
-          id(selected_control) = pressed;
-          if (previous >= 0) {
-            id(epaper_display).add_partial_region(CARD_X[previous], CARD_Y[previous], CARD_W, CARD_H);
-          } else {
-            id(epaper_display).add_partial_region(28, 750, 250, 50);
+          const int local_x = x - CARD_X[column];
+          const int local_y = y - CARD_Y[row];
+          const int slot = row * 2 + column + 1;
+          const char *slot_type = (slot == 1) ? "climate" : (slot == 2) ? "light" : "none";
+          ESP_LOGI("control", "Controls touch: x=%d y=%d slot=%d type=%s rel_x=%d rel_y=%d",
+                   x, y, slot, slot_type, local_x, local_y);
+          auto light_supports_brightness = [&]() {
+            if (!id(ha_control_light_supported_color_modes).has_state())
+              return false;
+            const std::string &modes = id(ha_control_light_supported_color_modes).state;
+            if (modes.empty())
+              return false;
+            static const char *dim_modes[] = {"brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww", "white"};
+            for (const char *mode : dim_modes) {
+              if (modes.find(mode) != std::string::npos)
+                return true;
+            }
+            return false;
+          };
+          // The first row contains the only configured controls in phase 1.
+          bool action_detected = false;
+          if (row == 0 && column == 0 && local_y >= 160 && local_y < 205) {
+            if (local_x < 70) {
+              ESP_LOGI("control", "Controls action: slot=1 climate target_down");
+              id(control_climate_temperature_down).execute();
+              action_detected = true;
+            } else if (local_x < 135) {
+              ESP_LOGI("control", "Controls action: slot=1 climate power_toggle");
+              id(control_climate_power_toggle).execute();
+              action_detected = true;
+            } else {
+              ESP_LOGI("control", "Controls action: slot=1 climate target_up");
+              id(control_climate_temperature_up).execute();
+              action_detected = true;
+            }
+          } else if (row == 0 && column == 1) {
+            if (light_supports_brightness()) {
+              if (local_y >= 160 && local_y < 205) {
+                if (local_x < 70) {
+                  ESP_LOGI("control", "Controls action: slot=2 light brightness_down");
+                  id(control_light_brightness_down).execute();
+                  action_detected = true;
+                } else if (local_x < 135) {
+                  ESP_LOGI("control", "Controls action: slot=2 light toggle");
+                  id(control_light_toggle).execute();
+                  action_detected = true;
+                } else {
+                  ESP_LOGI("control", "Controls action: slot=2 light brightness_up");
+                  id(control_light_brightness_up).execute();
+                  action_detected = true;
+                }
+              }
+            } else if (local_y >= 55 && local_y < 205) {
+              ESP_LOGI("control", "Controls action: slot=2 light toggle");
+              id(control_light_toggle).execute();
+              action_detected = true;
+            }
           }
-          id(epaper_display).add_partial_region(CARD_X[pressed], CARD_Y[pressed], CARD_W, CARD_H);
-          id(epaper_display).update_partial();
+          if (!action_detected)
+            ESP_LOGI("control", "Controls touch: slot=%d no action", slot);
       - logger.log:
           format: "Touch down x=%d y=%d raw_x=%d raw_y=%d id=%d"
           args: [touch.x, touch.y, touch.x_raw, touch.y_raw, touch.id]

@@ -30,6 +30,17 @@ font:
 # These are the same compact Material Design weather pictograms used by the
 # reference e-paper dashboard. ESPHome embeds them at build time, so they stay
 # monochrome and do not add a runtime dependency.
+# Keep the initial page deterministic and ignore the FT6336G startup edge
+# that can otherwise be reported as a touch before the panel is settled.
+esphome:
+  on_boot:
+    - priority: 800
+      then:
+        - lambda: |-
+            id(controls_view) = false;
+            id(selected_control) = -1;
+            id(controls_boot_touch_guard_until) = millis() + 3000U;
+
 image:
   - file: mdi:weather-sunny
     id: weather_sunny_icon
@@ -141,6 +152,41 @@ image:
     resize: 50x50
     type: grayscale
     transparency: alpha_channel
+  - file: mdi:lightbulb
+    id: control_light_icon
+    resize: 52x52
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:lightbulb-outline
+    id: control_light_outline_icon
+    resize: 52x52
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:lightbulb-outline
+    id: control_light_outline_large_icon
+    resize: 80x80
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:lightbulb
+    id: control_light_large_icon
+    resize: 80x80
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:thermostat
+    id: control_climate_icon
+    resize: 52x52
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:thermometer
+    id: control_thermometer_icon
+    resize: 22x22
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:power
+    id: control_power_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
 globals:
   - id: controls_view
     type: bool
@@ -150,6 +196,10 @@ globals:
     type: int
     restore_value: no
     initial_value: '-1'
+  - id: controls_boot_touch_guard_until
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
 
 # The complete display entry remains here because ESPHome merges display lists,
 # not individual display objects; splitting it would be fragile.
@@ -458,31 +508,89 @@ display:
           it.print(404, 100, id(font_label), Color::BLACK, "DEMO");
         }
       } else {
-        // Controls: four large, one-handed targets plus a persistent back area.
+        // Controls use a reusable 2x3 geometry: six 205x210 cards with
+        // 10px gutters. Each card keeps its complete interaction in-cell.
         it.print(28, 30, id(font_title), Color::BLACK, "CONTROLES");
-        it.print(325, 48, id(font_body), Color::BLACK, "PAPERMONO");
+        it.print(350, 48, id(font_label), Color::BLACK, "VOLVER");
         it.line(28, 100, w - 28, 100, Color::BLACK);
-
-        auto draw_control = [&](int x, int y, const char *label, const char *icon, int index) {
-          const bool selected = id(selected_control) == index;
-          if (selected) {
-            it.filled_rectangle(x, y, 205, 210, Color::BLACK);
-            it.print(x + 22, y + 30, id(font_title), Color::WHITE, icon);
-            it.print(x + 22, y + 135, id(font_body), Color::WHITE, label);
+        const int card_x[2] = {28, 247};
+        const int card_y[3] = {115, 340, 565};
+        const int card_w = 205;
+        const int card_h = 210;
+        auto light_supports_brightness = [&]() {
+          if (!id(ha_control_light_supported_color_modes).has_state())
+            return false;
+          const std::string &modes = id(ha_control_light_supported_color_modes).state;
+          if (modes.empty())
+            return false;
+          static const char *dim_modes[] = {"brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww", "white"};
+          for (const char *mode : dim_modes) {
+            if (modes.find(mode) != std::string::npos)
+              return true;
+          }
+          return false;
+        };
+        auto card = [&](int x, int y) { it.rectangle(x, y, card_w, card_h, Color::BLACK); };
+        auto button = [&](int x, int y, const char *label) {
+          it.rectangle(x, y, 55, 40, Color::BLACK);
+          it.printf(x + 28, y + 4, id(font_subtitle), Color::BLACK, TextAlign::TOP_CENTER, "%s", label);
+        };
+        auto button_icon = [&](int x, int y, esphome::image::Image *icon) {
+          it.rectangle(x, y, 55, 40, Color::BLACK);
+          it.image(x + 28, y + 20, icon, ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+        };
+        auto draw_empty = [&](int x, int y) {
+          card(x, y);
+        };
+        auto draw_climate = [&](int x, int y) {
+          card(x, y);
+          it.image(x + 31, y + 18, id(control_climate_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          it.print(x + 78, y + 25, id(font_label), Color::BLACK, "${ha_control_slot_1_name}");
+          if (id(ha_control_climate_target_temperature).has_state())
+            it.printf(x + 102, y + 58, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", id(ha_control_climate_target_temperature).state);
+          else
+            it.print(x + 102, y + 58, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "--°");
+          const int current_row_y = y + 126;
+          it.image(x + 58, current_row_y, id(control_thermometer_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          if (id(ha_control_climate_current_temperature).has_state())
+            it.printf(x + 118, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", id(ha_control_climate_current_temperature).state);
+          else
+            it.print(x + 118, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "--°");
+          if (id(ha_control_climate_state).has_state()) {
+            std::string hvac = id(ha_control_climate_state).state;
+            for (char &c : hvac)
+              c = toupper(c);
+            it.printf(x + 102, y + 150, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", hvac.c_str());
           } else {
-            it.rectangle(x, y, 205, 210, Color::BLACK);
-            it.print(x + 22, y + 30, id(font_title), Color::BLACK, icon);
-            it.print(x + 22, y + 135, id(font_body), Color::BLACK, label);
+            it.print(x + 102, y + 150, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "--");
+          }
+          button(x + 10, y + 165, "-");
+          button_icon(x + 75, y + 165, id(control_power_icon));
+          button(x + 140, y + 165, "+");
+        };
+        auto draw_light = [&](int x, int y) {
+          card(x, y);
+          it.image(x + 31, y + 18, id(control_light_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          it.print(x + 78, y + 25, id(font_label), Color::BLACK, "${ha_control_slot_2_name}");
+          const bool on = id(ha_control_light_state).has_state() && id(ha_control_light_state).state == "on";
+          const bool dimmable = light_supports_brightness();
+          if (dimmable) {
+            if (!on)
+              it.print(x + 102, y + 88, id(font_subtitle), Color::BLACK, TextAlign::TOP_CENTER, "OFF");
+            else if (id(ha_control_light_brightness).has_state())
+              it.printf(x + 102, y + 88, id(font_subtitle), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", id(ha_control_light_brightness).state * 100.0f / 255.0f);
+            button(x + 10, y + 165, "-");
+            button_icon(x + 75, y + 165, on ? id(control_light_icon) : id(control_light_outline_icon));
+            button(x + 140, y + 165, "+");
+          } else {
+            it.image(x + 102, y + 108, on ? id(control_light_large_icon) : id(control_light_outline_large_icon),
+                     ImageAlign::CENTER, Color::BLACK, Color::WHITE);
           }
         };
-
-        draw_control(28, 135, "CLIMA", "~", 0);
-        draw_control(247, 135, "LUCES", "*", 1);
-        draw_control(28, 375, "PERSIANAS", "=", 2);
-        draw_control(247, 375, "ROBOT", "+", 3);
-
-        it.filled_rectangle(28, 660, w - 56, 82, Color::BLACK);
-        it.print(150, 685, id(font_body), Color::WHITE, "VOLVER");
-        if (id(selected_control) >= 0)
-          it.print(28, 758, id(font_body), Color::BLACK, "SELECCIONADO");
+        draw_climate(card_x[0], card_y[0]);
+        draw_light(card_x[1], card_y[0]);
+        draw_empty(card_x[0], card_y[1]);
+        draw_empty(card_x[1], card_y[1]);
+        draw_empty(card_x[0], card_y[2]);
+        draw_empty(card_x[1], card_y[2]);
       }

@@ -2,11 +2,55 @@
 # after the API has been absent for 60 seconds.
 text_sensor:
   - platform: homeassistant
+    id: ha_control_light_state
+    entity_id: ${ha_control_light_entity}
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
+    id: ha_control_climate_state
+    entity_id: ${ha_control_climate_entity}
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x != "off" && x != "unavailable" && x != "unknown" && !x.empty())
+            id(ha_control_climate_last_active_mode) = x;
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
+    id: ha_control_light_supported_color_modes
+    entity_id: ${ha_control_light_entity}
+    attribute: supported_color_modes
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
     id: ha_weather_state
     entity_id: ${ha_weather_entity}
     internal: true
 
 sensor:
+  - platform: homeassistant
+    id: ha_control_light_brightness
+    entity_id: ${ha_control_light_entity}
+    attribute: brightness
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
+    id: ha_control_climate_current_temperature
+    entity_id: ${ha_control_climate_entity}
+    attribute: current_temperature
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+  - platform: homeassistant
+    id: ha_control_climate_target_temperature
+    entity_id: ${ha_control_climate_entity}
+    attribute: temperature
+    internal: true
+    on_value:
+      - script.execute: controls_refresh_partial
+
   - platform: homeassistant
     id: ha_indoor_temperature
     entity_id: ${ha_indoor_temperature_entity}
@@ -127,9 +171,125 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: ha_control_climate_last_active_mode
+    type: std::string
+    restore_value: no
+    initial_value: '""'
 
-# Do not refresh the e-paper when a value arrives. This only governs whether
-# the renderer uses cached HA states or the per-field DEMO defaults.
+script:
+  - id: controls_refresh_partial
+    mode: restart
+    then:
+      - lambda: |-
+          if (id(controls_view) && id(epaper_display).is_idle() &&
+              !id(epaper_display).has_refresh_pending()) {
+            id(epaper_display).add_partial_region(0, 100, 480, 700);
+            id(epaper_display).update_partial();
+          }
+  - id: control_light_toggle
+    then:
+      - lambda: |-
+          ESP_LOGI("control", "HA action: light.toggle entity=${ha_control_light_entity}");
+      - homeassistant.action:
+          action: light.toggle
+          data:
+            entity_id: ${ha_control_light_entity}
+  - id: control_light_brightness_down
+    then:
+      - lambda: |-
+          const float value = id(ha_control_light_brightness).has_state()
+              ? id(ha_control_light_brightness).state : 128.0f;
+          ESP_LOGI("control", "HA action: light.turn_on entity=${ha_control_light_entity} brightness=%.0f", std::max(0.0f, value - 32.0f));
+      - homeassistant.action:
+          action: light.turn_on
+          data:
+            entity_id: ${ha_control_light_entity}
+          data_template:
+            brightness: !lambda |-
+              float value = id(ha_control_light_brightness).has_state()
+                  ? id(ha_control_light_brightness).state : 128.0f;
+              return std::max(0.0f, value - 32.0f);
+  - id: control_light_brightness_up
+    then:
+      - lambda: |-
+          const float value = id(ha_control_light_brightness).has_state()
+              ? id(ha_control_light_brightness).state : 128.0f;
+          ESP_LOGI("control", "HA action: light.turn_on entity=${ha_control_light_entity} brightness=%.0f", std::min(255.0f, value + 32.0f));
+      - homeassistant.action:
+          action: light.turn_on
+          data:
+            entity_id: ${ha_control_light_entity}
+          data_template:
+            brightness: !lambda |-
+              float value = id(ha_control_light_brightness).has_state()
+                  ? id(ha_control_light_brightness).state : 128.0f;
+              return std::min(255.0f, value + 32.0f);
+  - id: control_climate_temperature_down
+    then:
+      - lambda: |-
+          const float value = id(ha_control_climate_target_temperature).has_state()
+              ? id(ha_control_climate_target_temperature).state - 0.5f : 20.0f;
+          ESP_LOGI("control", "HA action: climate.set_temperature entity=${ha_control_climate_entity} temperature=%.1f", value);
+      - homeassistant.action:
+          action: climate.set_temperature
+          data:
+            entity_id: ${ha_control_climate_entity}
+          data_template:
+            temperature: !lambda |-
+              return id(ha_control_climate_target_temperature).has_state()
+                  ? id(ha_control_climate_target_temperature).state - 0.5f : 20.0f;
+  - id: control_climate_temperature_up
+    then:
+      - lambda: |-
+          const float value = id(ha_control_climate_target_temperature).has_state()
+              ? id(ha_control_climate_target_temperature).state + 0.5f : 21.0f;
+          ESP_LOGI("control", "HA action: climate.set_temperature entity=${ha_control_climate_entity} temperature=%.1f", value);
+      - homeassistant.action:
+          action: climate.set_temperature
+          data:
+            entity_id: ${ha_control_climate_entity}
+          data_template:
+            temperature: !lambda |-
+              return id(ha_control_climate_target_temperature).has_state()
+                  ? id(ha_control_climate_target_temperature).state + 0.5f : 21.0f;
+  - id: control_climate_power_toggle
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return id(ha_control_climate_state).has_state() &&
+                     id(ha_control_climate_state).state == "off";
+          then:
+            - if:
+                condition:
+                  lambda: 'return !id(ha_control_climate_last_active_mode).empty();'
+                then:
+                  - lambda: |-
+                      ESP_LOGI("control", "HA action: climate.set_hvac_mode entity=${ha_control_climate_entity} hvac_mode=%s",
+                               id(ha_control_climate_last_active_mode).c_str());
+                  - homeassistant.action:
+                      action: climate.set_hvac_mode
+                      data:
+                        entity_id: ${ha_control_climate_entity}
+                      data_template:
+                        hvac_mode: !lambda 'return id(ha_control_climate_last_active_mode);'
+                else:
+                  - lambda: |-
+                      ESP_LOGI("control", "HA action: climate.turn_on entity=${ha_control_climate_entity}");
+                  - homeassistant.action:
+                      action: climate.turn_on
+                      data:
+                        entity_id: ${ha_control_climate_entity}
+          else:
+            - lambda: |-
+                ESP_LOGI("control", "HA action: climate.turn_off entity=${ha_control_climate_entity}");
+            - homeassistant.action:
+                action: climate.turn_off
+                data:
+                  entity_id: ${ha_control_climate_entity}
+
+# Control state arrivals request a coalesced PARTIAL only while the controls
+# page is visible; the renderer still uses the cached HA states on every draw.
 interval:
   - interval: 1s
     then:

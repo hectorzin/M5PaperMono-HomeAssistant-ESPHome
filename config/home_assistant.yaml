@@ -16,7 +16,24 @@ substitutions:
   ha_battery_discharge_entity: sensor.ingeteam_battery_discharging_power
   ha_battery_soc_entity: sensor.ingeteam_battery_state_of_charge
 
-  # Reserved for a later controls phase; no services are called yet.
+  # Controls are declarative. Slots 1 and 2 are the initial configuration;
+  # slots 3..6 are intentionally empty.
+  ha_control_slot_1_type: climate
+  ha_control_slot_1_entity: ${ha_control_climate_entity}
+  ha_control_slot_1_name: Clima
+  ha_control_slot_2_type: light
+  ha_control_slot_2_entity: ${ha_control_light_entity}
+  ha_control_slot_2_name: Salon
+  ha_control_slot_3_type: none
+  ha_control_slot_3_name: ""
+  ha_control_slot_4_type: none
+  ha_control_slot_4_name: ""
+  ha_control_slot_5_type: none
+  ha_control_slot_5_name: ""
+  ha_control_slot_6_type: none
+  ha_control_slot_6_name: ""
+
+  # Source entities retained for the first controls implementation.
   ha_control_climate_entity: climate.ac_salon_inteligente
   ha_control_light_entity: light.sofa
   ha_control_cover_entity: cover.persiana_jardin

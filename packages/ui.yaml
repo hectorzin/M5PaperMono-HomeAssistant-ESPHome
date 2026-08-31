@@ -546,10 +546,10 @@ display:
         const int card_y[3] = {115, 340, 565};
         const int card_w = 205;
         const int card_h = 210;
-        auto light_supports_brightness = [&]() {
-          if (!id(ha_control_light_supported_color_modes).has_state())
+        auto light_supports_brightness = [&](size_t index) {
+          if (!id(controls_id).modes_valid(index))
             return false;
-          const std::string &modes = id(ha_control_light_supported_color_modes).state;
+          const std::string modes = id(controls_id).modes_at(index);
           if (modes.empty())
             return false;
           static const char *dim_modes[] = {"brightness", "color_temp", "hs", "xy", "rgb", "rgbw", "rgbww", "white"};
@@ -623,38 +623,37 @@ display:
         auto draw_empty = [&](int x, int y) {
           card(x, y);
         };
-        auto draw_climate = [&](int x, int y) {
+        auto draw_climate = [&](size_t index, int x, int y) {
           card(x, y);
-          const std::string climate_name = id(ha_control_climate_friendly_name).has_state()
-              ? id(ha_control_climate_friendly_name).state : "${ha_control_climate_name}";
+          const std::string climate_name = id(controls_id).resolved_name_at(index);
           it.printf(x + 102, y + 12, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", climate_name.c_str());
-          std::string current_mode = id(ha_control_climate_state).has_state() ? id(ha_control_climate_state).state : "off";
+          std::string current_mode = id(controls_id).state_valid(index) ? id(controls_id).state_at(index) : "off";
           for (char &c : current_mode) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-          const bool target_valid = id(ha_control_climate_target_temperature).has_state();
-          const float target = target_valid ? id(ha_control_climate_target_temperature).state : 21.0f;
-          const bool current_valid = id(ha_control_climate_current_temperature).has_state();
-          const float current = current_valid ? id(ha_control_climate_current_temperature).state : 21.0f;
-          const float climate_min = id(ha_control_climate_min_temperature).has_state() ? id(ha_control_climate_min_temperature).state : 17.0f;
-          const float climate_max = id(ha_control_climate_max_temperature).has_state() ? id(ha_control_climate_max_temperature).state : 26.0f;
+          const bool target_valid = id(controls_id).number_valid(index, "target_temperature");
+          const float target = target_valid ? id(controls_id).number_at(index, "target_temperature") : 21.0f;
+          const bool current_valid = id(controls_id).number_valid(index, "current_temperature");
+          const float current = current_valid ? id(controls_id).number_at(index, "current_temperature") : 21.0f;
+          const float climate_min = id(controls_id).number_valid(index, "min_temperature") ? id(controls_id).number_at(index, "min_temperature") : 17.0f;
+          const float climate_max = id(controls_id).number_valid(index, "max_temperature") ? id(controls_id).number_at(index, "max_temperature") : 26.0f;
           const float range = climate_max > climate_min ? climate_max - climate_min : 9.0f;
           draw_arc(x, y, (target - climate_min) / range, target_valid && current_mode != "off");
           if (target_valid) draw_arc_marker(x, y, (target - climate_min) / range, false);
           if (current_valid) draw_arc_marker(x, y, (current - climate_min) / range, true);
-          if (id(ha_control_climate_target_temperature).has_state())
-            it.printf(x + 102, y + 58, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", id(ha_control_climate_target_temperature).state);
+          if (target_valid)
+            it.printf(x + 102, y + 58, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", target);
           else
             it.print(x + 102, y + 58, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "--°");
           const int current_row_y = y + 123;
           it.image(x + 74, current_row_y, id(control_thermometer_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
-          if (id(ha_control_climate_current_temperature).has_state())
-            it.printf(x + 118, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", id(ha_control_climate_current_temperature).state);
+          if (current_valid)
+            it.printf(x + 118, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", current);
           else
             it.print(x + 118, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "--°");
           button(x + 10, y + 165, "-");
           button_icon(x + 75, y + 165, hvac_icon(current_mode));
           button(x + 140, y + 165, "+");
           if (id(controls_climate_mode_selector_open)) {
-            const auto modes = split_hvac_modes(id(ha_control_climate_hvac_modes).has_state() ? id(ha_control_climate_hvac_modes).state : "");
+            const auto modes = split_hvac_modes(id(controls_id).modes_valid(index) ? id(controls_id).modes_at(index) : "");
             const int row_h = modes.size() <= 4 ? 40 : modes.size() <= 6 ? 30 : modes.size() <= 7 ? 25 : 20;
             for (size_t i = 0; i < modes.size(); i++) {
               const int cell_y = y + 165 - (static_cast<int>(i) + 1) * row_h;
@@ -666,16 +665,15 @@ display:
             }
           }
         };
-        auto draw_light = [&](int x, int y) {
+        auto draw_light = [&](size_t index, int x, int y) {
           card(x, y);
-          const std::string light_name = id(ha_control_light_friendly_name).has_state()
-              ? id(ha_control_light_friendly_name).state : "${ha_control_light_name}";
+          const std::string light_name = id(controls_id).resolved_name_at(index);
           it.printf(x + 102, y + 12, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", light_name.c_str());
-          const bool on = id(ha_control_light_state).has_state() && id(ha_control_light_state).state == "on";
-          const bool dimmable = light_supports_brightness();
+          const bool on = id(controls_id).state_valid(index) && id(controls_id).state_at(index) == "on";
+          const bool dimmable = light_supports_brightness(index);
           if (dimmable) {
-            const bool brightness_valid = id(ha_control_light_brightness).has_state() && id(ha_control_light_brightness).state >= 0.0f && id(ha_control_light_brightness).state <= 255.0f;
-            const float brightness = brightness_valid ? id(ha_control_light_brightness).state / 255.0f : 0.0f;
+            const bool brightness_valid = id(controls_id).number_valid(index, "brightness") && id(controls_id).number_at(index, "brightness") >= 0.0f && id(controls_id).number_at(index, "brightness") <= 255.0f;
+            const float brightness = brightness_valid ? id(controls_id).number_at(index, "brightness") / 255.0f : 0.0f;
             if (on) {
               draw_arc(x, y, brightness, brightness_valid);
               if (brightness_valid) it.printf(x + 102, y + 82, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", brightness * 100.0f);
@@ -688,10 +686,12 @@ display:
                      ImageAlign::CENTER, Color::BLACK, Color::WHITE);
           }
         };
-        draw_climate(card_x[0], card_y[0]);
-        draw_light(card_x[1], card_y[0]);
-        draw_empty(card_x[0], card_y[1]);
-        draw_empty(card_x[1], card_y[1]);
-        draw_empty(card_x[0], card_y[2]);
-        draw_empty(card_x[1], card_y[2]);
+        for (size_t index = 0; index < 6; index++) {
+          const int x = card_x[index % 2];
+          const int y = card_y[index / 2];
+          const std::string type = id(controls_id).type_at(index);
+          if (type == "climate") draw_climate(index, x, y);
+          else if (type == "light") draw_light(index, x, y);
+          else draw_empty(x, y);
+        }
       }

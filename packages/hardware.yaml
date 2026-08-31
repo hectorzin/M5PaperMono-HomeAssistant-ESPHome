@@ -214,6 +214,17 @@ touchscreen:
               id(control_light_toggle).execute(slot);
               action_detected = true;
             }
+          } else if (std::string(slot_type) == "switch" &&
+                     local_x >= 56 && local_x < 148 && local_y >= 42 && local_y < 134) {
+            std::string state = id(controls_id).state_at(slot);
+            for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (state == "on" || state == "off") {
+              ESP_LOGI("control", "Controls action: switch toggle slot=%d", slot);
+              id(control_switch_toggle).execute(slot);
+            } else {
+              ESP_LOGI("control", "Controls action: switch unavailable slot=%d state=%s", slot, state.c_str());
+            }
+            action_detected = true;
           } else if (std::string(slot_type) == "cover" && local_y >= 160 && local_y < 205) {
             if (local_x < 70) {
               id(control_cover_open).execute(slot);

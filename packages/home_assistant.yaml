@@ -149,6 +149,16 @@ script:
           action: light.toggle
           data:
             entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+  - id: control_switch_toggle
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          ESP_LOGI("control", "HA action: switch.toggle entity=%s", id(controls_id).entity_id_at(slot));
+      - homeassistant.action:
+          action: switch.toggle
+          data:
+            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
   - id: control_light_brightness_down
     parameters:
       slot: int

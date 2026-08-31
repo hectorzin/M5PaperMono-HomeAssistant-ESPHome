@@ -178,6 +178,11 @@ image:
     resize: 80x80
     type: grayscale
     transparency: alpha_channel
+  - file: mdi:power
+    id: control_switch_icon
+    resize: 80x80
+    type: grayscale
+    transparency: alpha_channel
   - file: mdi:thermostat
     id: control_climate_icon
     resize: 52x52
@@ -742,6 +747,20 @@ display:
                      ImageAlign::CENTER, Color::BLACK, Color::WHITE);
           }
         };
+        auto draw_switch = [&](size_t index, int x, int y) {
+          card(x, y);
+          const std::string switch_name = id(controls_id).resolved_name_at(index);
+          it.printf(x + 102, y + 12, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", switch_name.c_str());
+          std::string state = id(controls_id).state_at(index);
+          for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+          const bool on = state == "on";
+          const bool off = state == "off";
+          const char *status = on ? "ON" : off ? "OFF" : "No disponible";
+          if (on)
+            it.circle(x + 102, y + 88, 46, Color::BLACK);
+          it.image(x + 102, y + 88, id(control_switch_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+          it.printf(x + 102, y + 137, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", status);
+        };
         auto draw_cover = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string cover_name = id(controls_id).resolved_name_at(index);
@@ -786,6 +805,7 @@ display:
           const std::string type = id(controls_id).type_at(index);
           if (type == "climate") draw_climate(index, x, y);
           else if (type == "light") draw_light(index, x, y);
+          else if (type == "switch") draw_switch(index, x, y);
           else if (type == "cover") draw_cover(index, x, y);
           else if (type == "vacuum") draw_vacuum(index, x, y);
           else draw_empty(x, y);

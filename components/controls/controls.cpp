@@ -141,6 +141,22 @@ bool Controls::color_capable(size_t index) const {
   }
   return false;
 }
+bool Controls::light_supports_brightness(size_t index) const {
+  if (!modes_valid(index)) return false;
+  std::string raw = modes_at(index);
+  std::string token;
+  for (size_t i = 0; i <= raw.size(); i++) {
+    const char c = i < raw.size() ? raw[i] : '\0';
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+      token += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    } else if (!token.empty()) {
+      if (token == "brightness" || token == "color_temp" || token == "hs" || token == "xy" ||
+          token == "rgb" || token == "rgbw" || token == "rgbww" || token == "white") return true;
+      token.clear();
+    }
+  }
+  return false;
+}
 bool Controls::color_valid(size_t index) const { return index < count_ && color_valid_[index]; }
 float Controls::hue_at(size_t index) const { return index < count_ ? hue_[index] : 0.0f; }
 float Controls::saturation_at(size_t index) const { return index < count_ ? saturation_[index] : 0.0f; }

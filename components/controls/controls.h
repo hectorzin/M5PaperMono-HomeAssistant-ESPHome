@@ -55,6 +55,7 @@ class Controls : public Component {
   bool modes_valid(size_t index) const;
   std::string modes_at(size_t index) const;
   bool color_capable(size_t index) const;
+  bool light_supports_brightness(size_t index) const;
   bool color_valid(size_t index) const;
   float hue_at(size_t index) const;
   float saturation_at(size_t index) const;
@@ -84,6 +85,8 @@ class Controls : public Component {
   }
   bool color_edit_mode_at(size_t index) const { return index < count_ && color_edit_mode_[index]; }
   void set_color_edit_mode(size_t index, bool value) { if (index < count_) color_edit_mode_[index] = value; }
+  int active_slot() const { return active_slot_; }
+  void set_active_slot(int slot) { active_slot_ = (slot >= 0 && static_cast<size_t>(slot) < count_) ? slot : -1; }
   bool number_valid(size_t index, const char *field) const;
   float number_at(size_t index, const char *field) const;
   std::string last_active_mode_at(size_t index) const;
@@ -102,6 +105,7 @@ class Controls : public Component {
   std::array<int, 6> color_step_{};
   std::array<float, 6> chromatic_saturation_{};
   size_t count_{0};
+  int active_slot_{-1};
   papermono_epaper::PaperMonoEpaper *display_{nullptr};
   globals::GlobalsComponent<bool> *controls_view_{nullptr};
   globals::GlobalsComponent<int> *ha_connection_state_{nullptr};

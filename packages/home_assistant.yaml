@@ -264,6 +264,30 @@ script:
                 action: climate.turn_off
                 data:
                   entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+  - id: control_cover_open
+    parameters:
+      slot: int
+    then:
+      - homeassistant.action:
+          action: cover.open_cover
+          data:
+            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+  - id: control_cover_stop
+    parameters:
+      slot: int
+    then:
+      - homeassistant.action:
+          action: cover.stop_cover
+          data:
+            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+  - id: control_cover_close
+    parameters:
+      slot: int
+    then:
+      - homeassistant.action:
+          action: cover.close_cover
+          data:
+            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
 
 # Control state arrivals request a coalesced PARTIAL only while the controls
 # page is visible; the renderer still uses the cached HA states on every draw.

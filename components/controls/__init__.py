@@ -20,6 +20,7 @@ CONF_CURRENT_TEMPERATURE_SENSOR_ID = "current_temperature_sensor_id"
 CONF_MIN_TEMPERATURE_SENSOR_ID = "min_temperature_sensor_id"
 CONF_MAX_TEMPERATURE_SENSOR_ID = "max_temperature_sensor_id"
 CONF_BRIGHTNESS_SENSOR_ID = "brightness_sensor_id"
+CONF_CURRENT_POSITION_SENSOR_ID = "current_position_sensor_id"
 
 controls_ns = cg.esphome_ns.namespace("controls")
 Controls = controls_ns.class_("Controls", cg.Component)
@@ -70,6 +71,10 @@ def _declare_control_sensor_ids(controls):
             )
             entry[CONF_BRIGHTNESS_SENSOR_ID] = cv.declare_id(ha_sensor.HomeassistantSensor)(
                 f"{prefix}_brightness"
+            )
+        elif domain == "cover":
+            entry[CONF_CURRENT_POSITION_SENSOR_ID] = cv.declare_id(ha_sensor.HomeassistantSensor)(
+                f"{prefix}_current_position"
             )
 
         declared.append(entry)
@@ -128,7 +133,7 @@ async def to_code(config):
 
         state = await _make_text(control[CONF_STATE_SENSOR_ID], entity)
         friendly = await _make_text(control[CONF_FRIENDLY_NAME_SENSOR_ID], entity, "friendly_name")
-        modes = brightness = current = minimum = maximum = target = cg.nullptr
+        modes = brightness = current = minimum = maximum = target = current_position = cg.nullptr
 
         print(f"[controls]   state\n[controls]   friendly_name")
         if domain == "climate":
@@ -142,8 +147,11 @@ async def to_code(config):
             modes = await _make_text(control[CONF_MODES_SENSOR_ID], entity, "supported_color_modes")
             brightness = await _make_number(control[CONF_BRIGHTNESS_SENSOR_ID], entity, "brightness")
             print("[controls]   supported_color_modes\n[controls]   brightness")
+        elif domain == "cover":
+            current_position = await _make_number(control[CONF_CURRENT_POSITION_SENSOR_ID], entity, "current_position")
+            print("[controls]   current_position")
         else:
             print(f"[controls]   no domain-specific attributes for {domain}")
 
         cg.add(var.add_control(index, entity, control[CONF_NAME], domain, state, friendly, modes,
-                               brightness, current, minimum, maximum, target))
+                               brightness, current, minimum, maximum, target, current_position))

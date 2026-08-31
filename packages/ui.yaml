@@ -24,6 +24,12 @@ font:
     id: font_label
     size: 18
   - file: "fonts/DejaVuSans.ttf"
+    id: font_control_name
+    size: 20
+    glyphsets:
+      - GF_Latin_Core
+    glyphs: ["áéíóúÁÉÍÓÚñÑüÜ"]
+  - file: "fonts/DejaVuSans.ttf"
     id: font_device_battery
     size: 20
 
@@ -175,6 +181,21 @@ image:
   - file: mdi:thermostat
     id: control_climate_icon
     resize: 52x52
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:arrow-up
+    id: control_cover_open_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:stop
+    id: control_cover_stop_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:arrow-down
+    id: control_cover_close_icon
+    resize: 28x28
     type: grayscale
     transparency: alpha_channel
   - file: mdi:thermometer
@@ -574,6 +595,21 @@ display:
             }
           }
         };
+        auto draw_percentage_arc = [&](int x, int y, float value, bool active) {
+          const int cx = x + 102, cy = y + 105, radius = 70, steps = 32;
+          const float start = 140.0f, end = 400.0f;
+          const float clamped = value < 0.0f ? 0.0f : value > 1.0f ? 1.0f : value;
+          auto px = [&](float degrees, int r) { return cx + static_cast<int>(r * std::cos(degrees * 0.0174532925f)); };
+          auto py = [&](float degrees, int r) { return cy + static_cast<int>(r * std::sin(degrees * 0.0174532925f)); };
+          for (int i = 0; i < steps; i++) {
+            const float a0 = start + (end - start) * i / steps, a1 = start + (end - start) * (i + 1) / steps;
+            it.line(px(a0, radius), py(a0, radius), px(a1, radius), py(a1, radius), Color::BLACK);
+            if (active && (i + 1) <= static_cast<int>(clamped * steps + 0.5f)) {
+              it.line(px(a0, radius - 2), py(a0, radius - 2), px(a1, radius - 2), py(a1, radius - 2), Color::BLACK);
+              it.line(px(a0, radius + 2), py(a0, radius + 2), px(a1, radius + 2), py(a1, radius + 2), Color::BLACK);
+            }
+          }
+        };
         auto draw_arc_marker = [&](int x, int y, float value, bool double_notch) {
           const int cx = x + 102, cy = y + 105, radius = 70;
           const float fraction = value < 0.0f ? 0.0f : value > 1.0f ? 1.0f : value;
@@ -626,7 +662,7 @@ display:
         auto draw_climate = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string climate_name = id(controls_id).resolved_name_at(index);
-          it.printf(x + 102, y + 12, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", climate_name.c_str());
+          it.printf(x + 102, y + 12, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", climate_name.c_str());
           std::string current_mode = id(controls_id).state_valid(index) ? id(controls_id).state_at(index) : "off";
           for (char &c : current_mode) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
           const bool target_valid = id(controls_id).number_valid(index, "target_temperature");
@@ -668,14 +704,14 @@ display:
         auto draw_light = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string light_name = id(controls_id).resolved_name_at(index);
-          it.printf(x + 102, y + 12, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", light_name.c_str());
+          it.printf(x + 102, y + 12, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", light_name.c_str());
           const bool on = id(controls_id).state_valid(index) && id(controls_id).state_at(index) == "on";
           const bool dimmable = light_supports_brightness(index);
           if (dimmable) {
             const bool brightness_valid = id(controls_id).number_valid(index, "brightness") && id(controls_id).number_at(index, "brightness") >= 0.0f && id(controls_id).number_at(index, "brightness") <= 255.0f;
             const float brightness = brightness_valid ? id(controls_id).number_at(index, "brightness") / 255.0f : 0.0f;
             if (on) {
-              draw_arc(x, y, brightness, brightness_valid);
+              draw_percentage_arc(x, y, brightness, brightness_valid);
               if (brightness_valid) it.printf(x + 102, y + 82, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", brightness * 100.0f);
               button(x + 10, y + 165, "-"); button_icon(x + 75, y + 165, id(control_light_icon)); button(x + 140, y + 165, "+");
             } else {
@@ -686,12 +722,30 @@ display:
                      ImageAlign::CENTER, Color::BLACK, Color::WHITE);
           }
         };
+        auto draw_cover = [&](size_t index, int x, int y) {
+          card(x, y);
+          const std::string cover_name = id(controls_id).resolved_name_at(index);
+          it.printf(x + 102, y + 12, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", cover_name.c_str());
+          const bool position_valid = id(controls_id).number_valid(index, "current_position") &&
+                                      id(controls_id).number_at(index, "current_position") >= 0.0f &&
+                                      id(controls_id).number_at(index, "current_position") <= 100.0f;
+          const float position = position_valid ? id(controls_id).number_at(index, "current_position") : 0.0f;
+          draw_percentage_arc(x, y, position / 100.0f, position_valid);
+          if (position_valid)
+            it.printf(x + 102, y + 75, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", position);
+          else
+            it.print(x + 102, y + 75, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "--%");
+          button_icon(x + 10, y + 165, id(control_cover_open_icon));
+          button_icon(x + 75, y + 165, id(control_cover_stop_icon));
+          button_icon(x + 140, y + 165, id(control_cover_close_icon));
+        };
         for (size_t index = 0; index < 6; index++) {
           const int x = card_x[index % 2];
           const int y = card_y[index / 2];
           const std::string type = id(controls_id).type_at(index);
           if (type == "climate") draw_climate(index, x, y);
           else if (type == "light") draw_light(index, x, y);
+          else if (type == "cover") draw_cover(index, x, y);
           else draw_empty(x, y);
         }
       }

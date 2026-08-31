@@ -13,10 +13,12 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
                            text_sensor::TextSensor *state, text_sensor::TextSensor *friendly_name,
                            text_sensor::TextSensor *modes, sensor::Sensor *brightness,
                            sensor::Sensor *current_temperature, sensor::Sensor *min_temperature,
-                           sensor::Sensor *max_temperature, sensor::Sensor *target_temperature) {
+                           sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
+                           sensor::Sensor *current_position) {
   if (index >= entries_.size()) return;
   entries_[index] = {entity_id, name, domain, state, friendly_name, modes, brightness,
-                     current_temperature, min_temperature, max_temperature, target_temperature};
+                     current_temperature, min_temperature, max_temperature, target_temperature,
+                     current_position};
   count_ = std::max(count_, static_cast<size_t>(index + 1));
 }
 
@@ -48,6 +50,8 @@ void Controls::setup() {
       entry.max_temperature->add_on_state_callback([this](float) { refresh_(); });
     if (entry.target_temperature != nullptr)
       entry.target_temperature->add_on_state_callback([this](float) { refresh_(); });
+    if (entry.current_position != nullptr)
+      entry.current_position->add_on_state_callback([this](float) { refresh_(); });
   }
 }
 
@@ -95,6 +99,7 @@ bool Controls::number_valid(size_t index, const char *field) const {
   else if (!strcmp(field, "min_temperature")) s = e->min_temperature;
   else if (!strcmp(field, "max_temperature")) s = e->max_temperature;
   else if (!strcmp(field, "target_temperature")) s = e->target_temperature;
+  else if (!strcmp(field, "current_position")) s = e->current_position;
   return s != nullptr && s->has_state() && !std::isnan(s->state);
 }
 float Controls::number_at(size_t index, const char *field) const {
@@ -105,6 +110,7 @@ float Controls::number_at(size_t index, const char *field) const {
   else if (!strcmp(field, "min_temperature")) s = e->min_temperature;
   else if (!strcmp(field, "max_temperature")) s = e->max_temperature;
   else if (!strcmp(field, "target_temperature")) s = e->target_temperature;
+  else if (!strcmp(field, "current_position")) s = e->current_position;
   return s != nullptr ? s->state : 0.0f;
 }
 std::string Controls::resolved_name_at(size_t index) const {

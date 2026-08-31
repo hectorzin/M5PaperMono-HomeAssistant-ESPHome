@@ -23,6 +23,7 @@ struct ControlEntry {
   sensor::Sensor *min_temperature{nullptr};
   sensor::Sensor *max_temperature{nullptr};
   sensor::Sensor *target_temperature{nullptr};
+  sensor::Sensor *current_position{nullptr};
 };
 
 class Controls : public Component {
@@ -34,7 +35,8 @@ class Controls : public Component {
                    text_sensor::TextSensor *state, text_sensor::TextSensor *friendly_name,
                    text_sensor::TextSensor *modes, sensor::Sensor *brightness,
                    sensor::Sensor *current_temperature, sensor::Sensor *min_temperature,
-                   sensor::Sensor *max_temperature, sensor::Sensor *target_temperature);
+                   sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
+                   sensor::Sensor *current_position);
   void setup() override;
   void loop() override;
   void dump_config() override;

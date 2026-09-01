@@ -242,6 +242,9 @@ touchscreen:
           const int slot = id(controls_page) * 6 + visual_slot;
           if (slot < 0 || static_cast<size_t>(slot) >= id(controls_id).count())
             return;
+          if (id(active_color_preview_slot) >= 0 && id(active_color_preview_slot) != slot) {
+            id(control_light_color_exit).execute(id(active_color_preview_slot));
+          }
           id(controls_id).set_active_slot(slot);
           ESP_LOGI("control", "Controls active slot: slot=%d type=%s", slot, id(controls_id).type_at(slot));
           const char *slot_type = id(controls_id).type_at(slot);

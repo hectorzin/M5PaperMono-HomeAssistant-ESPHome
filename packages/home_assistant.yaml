@@ -563,6 +563,68 @@ script:
           id(status_led_red_hw_on) = !id(status_led_red_hw_on);
           id(status_led_green_hw_on) = !id(status_led_green_hw_on);
       - script.execute: status_led_update
+  - id: controls_page_cleanup
+    then:
+      - lambda: |-
+          id(controls_climate_mode_selector_open) = false;
+          id(selected_control) = -1;
+          id(controls_id).set_active_slot(-1);
+      - if:
+          condition:
+            lambda: 'return id(active_color_preview_slot) >= 0;'
+          then:
+            - script.execute:
+                id: control_light_color_exit
+                slot: !lambda 'return id(active_color_preview_slot);'
+          else:
+            - lambda: |-
+                id(active_color_preview_slot) = -1;
+                id(color_preview_blue).turn_off();
+            - script.execute: status_led_update
+  - id: controls_page_next
+    then:
+      - lambda: |-
+          const size_t total = id(controls_id).count();
+          if (total <= 6) return;
+          const int old_page = id(controls_page);
+          const int total_pages = static_cast<int>((total + 5) / 6);
+          id(controls_page) = (old_page + 1) % total_pages;
+          ESP_LOGI("control", "Controls page: %d/%d -> %d/%d",
+                   old_page + 1, total_pages, id(controls_page) + 1, total_pages);
+      - script.execute: controls_page_cleanup
+      - lambda: |-
+          id(epaper_display).add_partial_region(0, 100, 480, 700);
+          id(epaper_display).request_refresh(
+              papermono_epaper::RefreshPolicy::USER_INTERACTION,
+              papermono_epaper::RefreshKind::NORMAL, "controls_page");
+  - id: controls_page_prev
+    then:
+      - lambda: |-
+          const size_t total = id(controls_id).count();
+          if (total <= 6) return;
+          const int old_page = id(controls_page);
+          const int total_pages = static_cast<int>((total + 5) / 6);
+          id(controls_page) = (old_page - 1 + total_pages) % total_pages;
+          ESP_LOGI("control", "Controls page: %d/%d -> %d/%d",
+                   old_page + 1, total_pages, id(controls_page) + 1, total_pages);
+      - script.execute: controls_page_cleanup
+      - lambda: |-
+          id(epaper_display).add_partial_region(0, 100, 480, 700);
+          id(epaper_display).request_refresh(
+              papermono_epaper::RefreshPolicy::USER_INTERACTION,
+              papermono_epaper::RefreshKind::NORMAL, "controls_page");
+  - id: controls_return_home
+    then:
+      - lambda: |-
+          id(controls_view) = false;
+          id(pending_controls_entry) = false;
+          id(selected_control) = -1;
+          id(controls_id).set_active_slot(-1);
+          id(controls_climate_mode_selector_open) = false;
+          id(controls_page) = 0;
+          ESP_LOGI("control", "Controls return Home requested");
+      - script.execute: controls_exit
+      - lambda: 'id(papermono_activity_hub).exit_controls();'
   - id: controls_exit
     then:
       - lambda: 'ESP_LOGI("control", "Controls exit: clearing RGB preview and restoring status LED");'

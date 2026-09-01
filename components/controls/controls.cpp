@@ -20,11 +20,24 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
                            sensor::Sensor *current_position, sensor::Sensor *volume,
                            text_sensor::TextSensor *media_title, sensor::Sensor *supported_features,
                            text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name) {
-  if (index >= entries_.size()) return;
-  entries_[index] = {entity_id, name, domain, state, friendly_name, modes, hs_color, brightness,
-                     current_temperature, min_temperature, max_temperature, target_temperature,
-                     current_position, volume, media_title, supported_features, media_artist, media_album_name};
-  count_ = std::max(count_, static_cast<size_t>(index + 1));
+  const size_t slot = static_cast<size_t>(index);
+  if (slot >= entries_.size()) {
+    entries_.resize(slot + 1);
+    last_active_modes_.resize(slot + 1);
+    color_edit_mode_.resize(slot + 1);
+    hue_.resize(slot + 1);
+    saturation_.resize(slot + 1);
+    color_valid_.resize(slot + 1);
+    color_preview_started_.resize(slot + 1);
+    color_step_.resize(slot + 1);
+    chromatic_saturation_.resize(slot + 1);
+    optimistic_volume_.resize(slot + 1);
+    optimistic_volume_valid_.resize(slot + 1);
+  }
+  entries_[slot] = {entity_id, name, domain, state, friendly_name, modes, hs_color, brightness,
+                    current_temperature, min_temperature, max_temperature, target_temperature,
+                    current_position, volume, media_title, supported_features, media_artist, media_album_name};
+  count_ = std::max(count_, slot + 1);
 }
 
 void Controls::setup() {
@@ -122,7 +135,7 @@ void Controls::loop() {
   }
 }
 
-void Controls::dump_config() { ESP_LOGCONFIG(TAG, "Configured controls: %u/6", static_cast<unsigned>(count_)); }
+void Controls::dump_config() { ESP_LOGCONFIG(TAG, "Configured controls: %u", static_cast<unsigned>(count_)); }
 void Controls::log_unsupported(uint8_t index, const char *entity_id) {
   ESP_LOGW(TAG, "Control %u unsupported domain: %s", static_cast<unsigned>(index + 1), entity_id);
 }

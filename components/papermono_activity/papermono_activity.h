@@ -112,6 +112,10 @@ class PaperMonoActivityComponent : public Component {
   void set_pending_controls_entry(globals::GlobalsComponent<bool> *pending) {
     this->pending_controls_entry_ = pending;
   }
+  void set_controls_page(globals::GlobalsComponent<int> *page) { this->controls_page_ = page; }
+  void set_controls_return_home_pending(globals::GlobalsComponent<bool> *pending) {
+    this->controls_return_home_pending_ = pending;
+  }
   void set_ha_connection_state(globals::GlobalsComponent<int> *state) { this->ha_connection_state_ = state; }
   void set_ha_weather_state(text_sensor::TextSensor *sensor) { this->ha_weather_state_ = sensor; }
   void set_ha_indoor_temperature(sensor::Sensor *sensor) { this->ha_indoor_temperature_ = sensor; }
@@ -159,8 +163,10 @@ class PaperMonoActivityComponent : public Component {
   // ha_connection_state is REAL (not CONNECTING or DEMO).
   bool is_ha_controls_ready() const;
 
-  void enter_controls();
+  void enter_controls(int requested_page = -1);
+  void request_controls_entry(int requested_page);
   void exit_controls();
+  void on_power_button_single_click();
 
   void begin_pmic_wake_hardware_recovery(m5ioe1::M5IOE1Component *ioe);
 
@@ -252,6 +258,8 @@ class PaperMonoActivityComponent : public Component {
   papermono_epaper::PaperMonoEpaper *display_{nullptr};
   globals::GlobalsComponent<bool> *controls_view_{nullptr};
   globals::GlobalsComponent<bool> *pending_controls_entry_{nullptr};
+  globals::GlobalsComponent<int> *controls_page_{nullptr};
+  globals::GlobalsComponent<bool> *controls_return_home_pending_{nullptr};
   globals::GlobalsComponent<int> *ha_connection_state_{nullptr};
   text_sensor::TextSensor *ha_weather_state_{nullptr};
   sensor::Sensor *ha_indoor_temperature_{nullptr};

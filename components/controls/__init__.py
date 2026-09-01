@@ -9,7 +9,8 @@ from esphome.const import CONF_ENTITY_ID, CONF_ID, CONF_NAME
 DEPENDENCIES = ["api", "sensor", "text_sensor"]
 
 CONF_CONTROLS = "controls"
-MAX_CONTROLS = 6
+# Visual grid shows 6 cards per page; no hard cap on configured entities.
+MAX_CONTROLS = 48
 SUPPORTED_DOMAINS = {"climate", "light", "cover", "vacuum", "switch", "media_player"}
 
 CONF_STATE_SENSOR_ID = "state_sensor_id"

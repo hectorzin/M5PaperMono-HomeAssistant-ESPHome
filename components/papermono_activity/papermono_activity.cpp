@@ -118,6 +118,7 @@ void PaperMonoActivityComponent::setup() {
   this->light_sleep_timer_reason_ = LightSleepTimerReason::NORMAL_REFRESH;
 
   ESP_LOGI(TAG, "Activity setup: pmic_shutdown=%s", this->pmu_->is_boot_from_pmic_shutdown() ? "yes" : "no");
+  this->pmu_->set_power_button_handler([this]() { this->on_power_button_single_click(); });
   if (this->pmu_->is_boot_from_pmic_shutdown() && this->display_ != nullptr) {
     this->display_->arm_pmic_initial_full();
   }
@@ -130,6 +131,7 @@ void PaperMonoActivityComponent::setup() {
   }
 
   this->handle_boot_wake_source_();
+  this->pmu_->set_power_button_handler([this]() { this->on_power_button_single_click(); });
   ESP_LOGI(TAG, "Frontlight init: OFF (boot default)");
   ESP_LOGI(TAG, "Runtime config: frontlight_brightness=%u%% frontlight_timeout=%us sleep_timeout=%us quiet_start=%s quiet_end=%s refresh_interval=%umin",
            this->on_brightness_percent_(), this->timeout_ms_() / 1000U, this->sleep_timeout_ms_() / 1000U,
@@ -337,9 +339,16 @@ void PaperMonoActivityComponent::on_pickup_transition_() {
   ESP_LOGI(TAG, "Pickup: partial_count=%u -> no refresh", count);
 }
 
-void PaperMonoActivityComponent::enter_controls() {
+void PaperMonoActivityComponent::request_controls_entry(int requested_page) {
+  this->enter_controls(requested_page);
+}
+
+void PaperMonoActivityComponent::enter_controls(int requested_page) {
   const bool ha_controls_ready = this->is_ha_controls_ready();
   ESP_LOGI("control", "Controls navigation request: HA ready=%s", ha_controls_ready ? "yes" : "no");
+  if (requested_page >= 0 && this->controls_page_ != nullptr) {
+    this->controls_page_->value() = requested_page;
+  }
   if (!ha_controls_ready) {
     const bool was_pending = this->pending_controls_entry_ != nullptr && this->pending_controls_entry_->value();
     if (this->pending_controls_entry_ != nullptr) {
@@ -398,6 +407,19 @@ void PaperMonoActivityComponent::exit_controls() {
     this->pending_controls_entry_->value() = false;
   }
   this->exit_controls_(false);
+}
+
+void PaperMonoActivityComponent::on_power_button_single_click() {
+  const bool in_controls = this->in_controls_view_();
+  const bool pending_entry =
+      this->pending_controls_entry_ != nullptr && this->pending_controls_entry_->value();
+  if (!in_controls && !pending_entry) {
+    return;
+  }
+  ESP_LOGI(TAG, "Power button: returning Home");
+  if (this->controls_return_home_pending_ != nullptr) {
+    this->controls_return_home_pending_->value() = true;
+  }
 }
 
 void PaperMonoActivityComponent::exit_controls_(bool preserve_sleep_pending) {

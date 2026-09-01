@@ -90,6 +90,12 @@ static constexpr uint32_t PMIC_SHUTDOWN_PENDING_MAGIC = 0x504D3153;  // "PM1S"
 // SYS_CMD: key 0xA in bits 7:4, shutdown cmd 0x01 (M5PM1::shutdown).
 static constexpr uint8_t M5PM1_SYS_CMD_SHUTDOWN = 0xA1;
 
+// IRQ_STATUS3 button flags (M5Stack M5PM1.h).
+static constexpr uint8_t M5PM1_IRQ_BTN_SINGLE_CLICK = 0x01;
+static constexpr uint8_t M5PM1_IRQ_BTN_WAKEUP = 0x02;
+static constexpr uint8_t M5PM1_IRQ_BTN_DOUBLE_CLICK = 0x04;
+// IRQ_MASK3: mask WAKEUP + DOUBLE_CLICK; leave SINGLE_CLICK unmasked for Home navigation.
+static constexpr uint8_t M5PM1_IRQ_BTN_MASK_RUNTIME = 0x06;
 static constexpr uint8_t M5PM1_REG_BTN_CFG_1 = 0x49;
 // BTN_CFG_1[0] SINGLE_RST_DIS: 0=enable single-click reset, 1=disable (setSingleResetDisable).
 static constexpr uint8_t M5PM1_BTN_CFG1_SINGLE_RST_DIS = 0x01;
@@ -419,7 +425,7 @@ bool M5PM1Component::configure_usb_irq_masks_() {
   if (!this->write_byte(M5PM1_REG_IRQ_MASK1, 0x0F)) {
     return false;
   }
-  if (!this->write_byte(M5PM1_REG_IRQ_MASK3, 0x07)) {
+  if (!this->write_byte(M5PM1_REG_IRQ_MASK3, M5PM1_IRQ_BTN_MASK_RUNTIME)) {
     return false;
   }
 
@@ -605,10 +611,26 @@ void M5PM1Component::restore_after_light_sleep() {
 
 bool M5PM1Component::process_irq_() {
   bool motion_handled = false;
+
+  uint8_t btn_irq = 0;
+  if (!this->read_byte(M5PM1_REG_IRQ_STATUS3, &btn_irq)) {
+    ESP_LOGW(TAG, "IRQ_STATUS3 read failed");
+  } else if (btn_irq != 0) {
+    if (btn_irq & M5PM1_IRQ_BTN_SINGLE_CLICK) {
+      ESP_LOGI(TAG, "Power button: single click");
+      if (this->power_button_handler_) {
+        this->power_button_handler_();
+      }
+    }
+    const uint8_t clear_btn = static_cast<uint8_t>(~btn_irq);
+    this->write_byte(M5PM1_REG_IRQ_STATUS3, clear_btn);
+    btn_irq = 0;
+  }
+
   uint8_t gpio_irq = 0;
   if (!this->read_byte(M5PM1_REG_IRQ_STATUS1, &gpio_irq)) {
     ESP_LOGW(TAG, "IRQ_STATUS1 read failed");
-    return false;
+    return motion_handled;
   }
 
   if (gpio_irq & M5PM1_IRQ_GPIO4) {
@@ -628,7 +650,6 @@ bool M5PM1Component::process_irq_() {
   }
 
   if (gpio_irq == 0 && sys_irq == 0) {
-    this->clear_all_irq_status_();
     return motion_handled;
   }
 
@@ -650,7 +671,6 @@ bool M5PM1Component::process_irq_() {
     this->write_byte(M5PM1_REG_IRQ_STATUS1, clear_gpio);
   }
 
-  this->write_byte(M5PM1_REG_IRQ_STATUS3, 0x00);
   return motion_handled;
 }
 

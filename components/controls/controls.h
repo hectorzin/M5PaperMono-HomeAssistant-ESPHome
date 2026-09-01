@@ -2,6 +2,7 @@
 
 #include <array>
 #include <string>
+#include <vector>
 
 #include "esphome/components/globals/globals_component.h"
 #include "esphome/components/papermono_epaper/papermono_epaper.h"
@@ -114,17 +115,17 @@ class Controls : public Component {
   const ControlEntry *entry_(size_t index) const;
   void refresh_();
   void media_volume_confirmed_(size_t index, float value);
-  std::array<ControlEntry, 6> entries_{};
-  std::array<std::string, 6> last_active_modes_{};
-  std::array<bool, 6> color_edit_mode_{};
-  std::array<float, 6> hue_{};
-  std::array<float, 6> saturation_{};
-  std::array<bool, 6> color_valid_{};
-  std::array<bool, 6> color_preview_started_{};
-  std::array<int, 6> color_step_{};
-  std::array<float, 6> chromatic_saturation_{};
-  std::array<float, 6> optimistic_volume_{};
-  std::array<bool, 6> optimistic_volume_valid_{};
+  std::vector<ControlEntry> entries_{};
+  std::vector<std::string> last_active_modes_{};
+  std::vector<bool> color_edit_mode_{};
+  std::vector<float> hue_{};
+  std::vector<float> saturation_{};
+  std::vector<bool> color_valid_{};
+  std::vector<bool> color_preview_started_{};
+  std::vector<int> color_step_{};
+  std::vector<float> chromatic_saturation_{};
+  std::vector<float> optimistic_volume_{};
+  std::vector<bool> optimistic_volume_valid_{};
   size_t count_{0};
   int active_slot_{-1};
   papermono_epaper::PaperMonoEpaper *display_{nullptr};

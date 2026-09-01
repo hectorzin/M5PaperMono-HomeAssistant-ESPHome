@@ -83,6 +83,7 @@ class M5PM1Component : public Component, public i2c::I2CDevice {
   // BMI270 INT1 -> M5PM1 GPIO4 -> PY_IRQ (ESP32 GPIO1).
   bool configure_imu_irq_route_();
   void set_motion_handler(std::function<bool()> handler) { this->motion_handler_ = std::move(handler); }
+  void set_power_button_handler(std::function<void()> handler) { this->power_button_handler_ = std::move(handler); }
 
   // Read PWR_SRC + VBAT and publish linked sensors. Safe to call from the main loop only.
   void refresh_power_and_battery();
@@ -144,6 +145,7 @@ class M5PM1Component : public Component, public i2c::I2CDevice {
   sensor::Sensor *battery_level_sensor_{nullptr};
   binary_sensor::BinarySensor *external_power_binary_sensor_{nullptr};
   std::function<bool()> motion_handler_;
+  std::function<void()> power_button_handler_;
   bool frontlight_hw_ready_{false};
   bool frontlight_recovery_failed_{false};
   bool boot_from_pmic_shutdown_{false};

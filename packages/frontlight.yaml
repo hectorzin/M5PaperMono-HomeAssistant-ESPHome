@@ -19,6 +19,8 @@ papermono_activity:
   display_id: epaper_display
   controls_view: controls_view
   pending_controls_entry: pending_controls_entry
+  controls_page: controls_page
+  controls_return_home_pending: controls_return_home_pending
   time_id: ha_time
   ha_connection_state: ha_connection_state
   ha_weather_state: ha_weather_state

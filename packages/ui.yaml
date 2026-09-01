@@ -47,6 +47,7 @@ esphome:
             id(pending_controls_entry) = false;
             id(controls_id).set_active_slot(-1);
             id(selected_control) = -1;
+            id(controls_page) = 0;
             id(controls_boot_touch_guard_until) = millis() + 3000U;
 
 image:
@@ -303,6 +304,14 @@ globals:
     restore_value: no
     initial_value: '0'
   - id: controls_climate_mode_selector_open
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: controls_page
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: controls_return_home_pending
     type: bool
     restore_value: no
     initial_value: 'false'
@@ -617,6 +626,13 @@ display:
         // Controls use a reusable 2x3 geometry: six 205x210 cards with
         // 10px gutters. Each card keeps its complete interaction in-cell.
         it.print(28, 30, id(font_title), Color::BLACK, "CONTROLES");
+        const size_t controls_total = id(controls_id).count();
+        const int controls_total_pages = controls_total == 0 ? 1 : static_cast<int>((controls_total + 5) / 6);
+        const int controls_current_page = id(controls_page);
+        if (controls_total_pages > 1) {
+          it.printf(220, 48, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%d/%d",
+                    controls_current_page + 1, controls_total_pages);
+        }
         it.print(350, 48, id(font_label), Color::BLACK, "VOLVER");
         it.line(28, 100, w - 28, 100, Color::BLACK);
         const int card_x[2] = {28, 247};
@@ -744,7 +760,7 @@ display:
           button(x + 10, y + 165, "-");
           button_icon(x + 75, y + 165, hvac_icon(current_mode));
           button(x + 140, y + 165, "+");
-          if (id(controls_climate_mode_selector_open)) {
+          if (id(controls_climate_mode_selector_open) && static_cast<int>(index) == id(selected_control)) {
             const auto modes = split_hvac_modes(id(controls_id).modes_valid(index) ? id(controls_id).modes_at(index) : "");
             const int row_h = modes.size() <= 4 ? 40 : modes.size() <= 6 ? 30 : modes.size() <= 7 ? 25 : 20;
             for (size_t i = 0; i < modes.size(); i++) {
@@ -871,9 +887,14 @@ display:
                                  (can_play && id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_PLAY)));
           media_button(x + 140, id(control_media_next_icon), id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK));
         };
-        for (size_t index = 0; index < 6; index++) {
-          const int x = card_x[index % 2];
-          const int y = card_y[index / 2];
+        for (size_t visual_slot = 0; visual_slot < 6; visual_slot++) {
+          const size_t index = static_cast<size_t>(controls_current_page) * 6 + visual_slot;
+          const int x = card_x[visual_slot % 2];
+          const int y = card_y[visual_slot / 2];
+          if (index >= controls_total) {
+            draw_empty(x, y);
+            continue;
+          }
           const std::string type = id(controls_id).type_at(index);
           if (type == "climate") draw_climate(index, x, y);
           else if (type == "light") draw_light(index, x, y);

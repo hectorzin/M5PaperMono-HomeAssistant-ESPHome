@@ -78,16 +78,19 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return id(controls_view) && id(controls_id).active_slot() >= 0;'
+              lambda: 'return id(controls_view);'
             then:
-              - lambda: |-
-                  if (std::string(id(controls_id).type_at(id(controls_id).active_slot())) == "media_player")
-                    ESP_LOGI("control", "Physical button: UP slot=%d type=media_player action=volume_up", id(controls_id).active_slot());
-              - script.execute:
-                  id: controls_positive
-                  slot: !lambda 'return id(controls_id).active_slot();'
+              - script.execute: controls_page_next
             else:
-              - lambda: 'ESP_LOGI("control", "Physical button: UP ignored, no active control");'
+              - if:
+                  condition:
+                    lambda: 'return !id(pending_controls_entry);'
+                  then:
+                    - lambda: |-
+                        const size_t total = id(controls_id).count();
+                        const int total_pages = total == 0 ? 1 : static_cast<int>((total + 5) / 6);
+                        id(papermono_activity_hub).request_controls_entry(0);
+                        ESP_LOGI("control", "GPIO2 Controls entry: page=1/%d", total_pages);
 
   - platform: gpio
     id: physical_button_down
@@ -105,16 +108,30 @@ binary_sensor:
       then:
         - if:
             condition:
-              lambda: 'return id(controls_view) && id(controls_id).active_slot() >= 0;'
+              lambda: 'return id(controls_view);'
             then:
-              - lambda: |-
-                  if (std::string(id(controls_id).type_at(id(controls_id).active_slot())) == "media_player")
-                    ESP_LOGI("control", "Physical button: DOWN slot=%d type=media_player action=volume_down", id(controls_id).active_slot());
-              - script.execute:
-                  id: controls_negative
-                  slot: !lambda 'return id(controls_id).active_slot();'
+              - script.execute: controls_page_prev
             else:
-              - lambda: 'ESP_LOGI("control", "Physical button: DOWN ignored, no active control");'
+              - if:
+                  condition:
+                    lambda: 'return !id(pending_controls_entry);'
+                  then:
+                    - lambda: |-
+                        const size_t total = id(controls_id).count();
+                        const int total_pages = total == 0 ? 1 : static_cast<int>((total + 5) / 6);
+                        const int last_page = total_pages - 1;
+                        id(papermono_activity_hub).request_controls_entry(last_page);
+                        ESP_LOGI("control", "GPIO3 Controls entry: page=%d/%d", total_pages, total_pages);
+
+interval:
+  - interval: 50ms
+    then:
+      - if:
+          condition:
+            lambda: 'return id(controls_return_home_pending);'
+          then:
+            - lambda: 'id(controls_return_home_pending) = false;'
+            - script.execute: controls_return_home
 
 spi:
   id: spi_epd
@@ -160,16 +177,25 @@ touchscreen:
             id(selected_control) = -1;
             id(controls_id).set_active_slot(-1);
             id(controls_climate_mode_selector_open) = false;
+            id(controls_page) = 0;
             id(papermono_activity_hub).enter_controls();
             ESP_LOGI("control", "Controls renderer after enter_controls: view=%s pending=%s renderer=%s",
                      id(controls_view) ? "active" : "inactive", id(pending_controls_entry) ? "pending" : "idle",
                      id(controls_view) ? "controls" : (id(pending_controls_entry) ? "connecting" : "screensaver"));
             return;
           }
+          if (y < 100) {
+            ESP_LOGI("control", "Controls back touch");
+            id(controls_return_home).execute();
+            return;
+          }
           if (id(controls_climate_mode_selector_open)) {
             std::vector<std::string> modes;
             std::string token;
             const int popup_slot = id(selected_control) >= 0 ? id(selected_control) : 0;
+            const int popup_visual = popup_slot - id(controls_page) * 6;
+            if (popup_visual < 0 || popup_visual >= 6)
+              return;
             const std::string raw = id(controls_id).modes_valid(popup_slot) ? id(controls_id).modes_at(popup_slot) : "";
             auto append_mode = [&](const std::string &candidate) {
               if (candidate != "cool" && candidate != "heat" && candidate != "fan_only" && candidate != "dry" &&
@@ -183,7 +209,7 @@ touchscreen:
                 token += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
               else if (!token.empty()) { append_mode(token); token.clear(); }
             }
-            const int local_x = x - CARD_X[popup_slot % 2], local_y = y - CARD_Y[popup_slot / 2];
+            const int local_x = x - CARD_X[popup_visual % 2], local_y = y - CARD_Y[popup_visual / 2];
             const int row_h = modes.empty() ? 0 : modes.size() <= 4 ? 40 : modes.size() <= 6 ? 30 : modes.size() <= 7 ? 25 : 20;
             const bool in_popup = !modes.empty() && local_x >= 73 && local_x < 128 &&
                                   local_y >= 165 - static_cast<int>(modes.size()) * row_h && local_y < 165;
@@ -202,17 +228,6 @@ touchscreen:
             id(controls_refresh_partial).execute();
             return;
           }
-          if (y < 100) {
-            id(controls_exit).execute();
-            id(controls_view) = false;
-            id(selected_control) = -1;
-            id(controls_id).set_active_slot(-1);
-            id(controls_climate_mode_selector_open) = false;
-            ESP_LOGI("control", "controls -> screensaver");
-            id(papermono_activity_hub).exit_controls();
-            return;
-          }
-
           int column = -1;
           if (x >= CARD_X[0] && x < CARD_X[0] + CARD_W) column = 0;
           else if (x >= CARD_X[1] && x < CARD_X[1] + CARD_W) column = 1;
@@ -223,11 +238,12 @@ touchscreen:
             return;
           const int local_x = x - CARD_X[column];
           const int local_y = y - CARD_Y[row];
-          const int slot = row * 2 + column;
-          if (slot >= 0 && static_cast<size_t>(slot) < id(controls_id).count()) {
-            id(controls_id).set_active_slot(slot);
-            ESP_LOGI("control", "Controls active slot: slot=%d type=%s", slot, id(controls_id).type_at(slot));
-          }
+          const int visual_slot = row * 2 + column;
+          const int slot = id(controls_page) * 6 + visual_slot;
+          if (slot < 0 || static_cast<size_t>(slot) >= id(controls_id).count())
+            return;
+          id(controls_id).set_active_slot(slot);
+          ESP_LOGI("control", "Controls active slot: slot=%d type=%s", slot, id(controls_id).type_at(slot));
           const char *slot_type = id(controls_id).type_at(slot);
           ESP_LOGI("control", "Controls touch: x=%d y=%d slot=%d type=%s rel_x=%d rel_y=%d",
                    x, y, slot, slot_type, local_x, local_y);

@@ -290,6 +290,21 @@ script:
           id(status_led_red_hw_on) = !id(status_led_red_hw_on);
           id(status_led_green_hw_on) = !id(status_led_green_hw_on);
       - script.execute: status_led_update
+  - id: controls_exit
+    then:
+      - lambda: 'ESP_LOGI("control", "Controls exit: clearing RGB preview and restoring status LED");'
+      - if:
+          condition:
+            lambda: 'return id(active_color_preview_slot) >= 0;'
+          then:
+            - script.execute:
+                id: control_light_color_exit
+                slot: !lambda 'return id(active_color_preview_slot);'
+          else:
+            - lambda: |-
+                id(active_color_preview_slot) = -1;
+                id(color_preview_blue).turn_off();
+            - script.execute: status_led_update
   - id: control_light_hue_down
     parameters:
       slot: int
@@ -347,8 +362,13 @@ script:
             action = id(controls_id).color_edit_mode_at(slot) ? "hue_up" :
                      (id(controls_id).light_supports_brightness(slot) ? "brightness_up" : "on");
           } else if (type == "climate") action = "temperature_up";
-          else if (type == "cover") action = "open";
-          else if (type == "vacuum") action = "start";
+          else if (type == "cover") {
+            const std::string state = id(controls_id).state_at(slot);
+            action = state == "opening" || state == "closing" ? "stop" : "open";
+          } else if (type == "vacuum") {
+            const std::string state = id(controls_id).state_at(slot);
+            action = state == "cleaning" || state == "returning" ? "pause" : "start";
+          }
           else if (type == "switch") action = "on";
           ESP_LOGI("control", "Physical/touch positive: slot=%d type=%s action=%s", slot, type.c_str(), action.c_str());
       - if:
@@ -387,17 +407,33 @@ script:
                                   condition:
                                     lambda: 'return std::string(id(controls_id).type_at(slot)) == "cover";'
                                   then:
-                                    - script.execute:
-                                        id: control_cover_open
-                                        slot: !lambda 'return slot;'
+                                    - if:
+                                        condition:
+                                          lambda: 'return id(controls_id).state_at(slot) == "opening" || id(controls_id).state_at(slot) == "closing";'
+                                        then:
+                                          - script.execute:
+                                              id: control_cover_stop
+                                              slot: !lambda 'return slot;'
+                                        else:
+                                          - script.execute:
+                                              id: control_cover_open
+                                              slot: !lambda 'return slot;'
                                   else:
                                     - if:
                                         condition:
                                           lambda: 'return std::string(id(controls_id).type_at(slot)) == "vacuum";'
                                         then:
-                                          - script.execute:
-                                              id: control_vacuum_start
-                                              slot: !lambda 'return slot;'
+                                          - if:
+                                              condition:
+                                                lambda: 'return id(controls_id).state_at(slot) == "cleaning" || id(controls_id).state_at(slot) == "returning";'
+                                              then:
+                                                - script.execute:
+                                                    id: control_vacuum_pause
+                                                    slot: !lambda 'return slot;'
+                                              else:
+                                                - script.execute:
+                                                    id: control_vacuum_start
+                                                    slot: !lambda 'return slot;'
                                         else:
                                           - if:
                                               condition:
@@ -417,8 +453,13 @@ script:
             action = id(controls_id).color_edit_mode_at(slot) ? "hue_down" :
                      (id(controls_id).light_supports_brightness(slot) ? "brightness_down" : "off");
           } else if (type == "climate") action = "temperature_down";
-          else if (type == "cover") action = "close";
-          else if (type == "vacuum") action = "pause";
+          else if (type == "cover") {
+            const std::string state = id(controls_id).state_at(slot);
+            action = state == "opening" || state == "closing" ? "stop" : "close";
+          } else if (type == "vacuum") {
+            const std::string state = id(controls_id).state_at(slot);
+            action = state == "cleaning" || state == "returning" ? "pause" : "return_to_base";
+          }
           else if (type == "switch") action = "off";
           ESP_LOGI("control", "Physical/touch negative: slot=%d type=%s action=%s", slot, type.c_str(), action.c_str());
       - if:
@@ -457,17 +498,33 @@ script:
                                   condition:
                                     lambda: 'return std::string(id(controls_id).type_at(slot)) == "cover";'
                                   then:
-                                    - script.execute:
-                                        id: control_cover_close
-                                        slot: !lambda 'return slot;'
+                                    - if:
+                                        condition:
+                                          lambda: 'return id(controls_id).state_at(slot) == "opening" || id(controls_id).state_at(slot) == "closing";'
+                                        then:
+                                          - script.execute:
+                                              id: control_cover_stop
+                                              slot: !lambda 'return slot;'
+                                        else:
+                                          - script.execute:
+                                              id: control_cover_close
+                                              slot: !lambda 'return slot;'
                                   else:
                                     - if:
                                         condition:
                                           lambda: 'return std::string(id(controls_id).type_at(slot)) == "vacuum";'
                                         then:
-                                          - script.execute:
-                                              id: control_vacuum_pause
-                                              slot: !lambda 'return slot;'
+                                          - if:
+                                              condition:
+                                                lambda: 'return id(controls_id).state_at(slot) == "cleaning" || id(controls_id).state_at(slot) == "returning";'
+                                              then:
+                                                - script.execute:
+                                                    id: control_vacuum_pause
+                                                    slot: !lambda 'return slot;'
+                                              else:
+                                                - script.execute:
+                                                    id: control_vacuum_return_to_base
+                                                    slot: !lambda 'return slot;'
                                         else:
                                           - if:
                                               condition:

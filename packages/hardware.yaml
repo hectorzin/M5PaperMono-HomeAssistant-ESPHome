@@ -184,6 +184,7 @@ touchscreen:
             return;
           }
           if (y < 100) {
+            id(controls_exit).execute();
             id(controls_view) = false;
             id(selected_control) = -1;
             id(controls_id).set_active_slot(-1);

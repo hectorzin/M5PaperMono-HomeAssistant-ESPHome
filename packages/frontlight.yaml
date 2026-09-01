@@ -18,6 +18,7 @@ papermono_activity:
   rtc_id: papermono_rtc_hub
   display_id: epaper_display
   controls_view: controls_view
+  pending_controls_entry: pending_controls_entry
   time_id: ha_time
   ha_connection_state: ha_connection_state
   ha_weather_state: ha_weather_state

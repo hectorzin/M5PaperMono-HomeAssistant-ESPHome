@@ -155,12 +155,15 @@ touchscreen:
           const int CARD_H = 210;
 
           if (!id(controls_view)) {
-            id(controls_view) = true;
+            if (id(pending_controls_entry))
+              return;
             id(selected_control) = -1;
             id(controls_id).set_active_slot(-1);
             id(controls_climate_mode_selector_open) = false;
-            ESP_LOGI("control", "screensaver -> controls");
             id(papermono_activity_hub).enter_controls();
+            ESP_LOGI("control", "Controls renderer after enter_controls: view=%s pending=%s renderer=%s",
+                     id(controls_view) ? "active" : "inactive", id(pending_controls_entry) ? "pending" : "idle",
+                     id(controls_view) ? "controls" : (id(pending_controls_entry) ? "connecting" : "screensaver"));
             return;
           }
           if (id(controls_climate_mode_selector_open)) {

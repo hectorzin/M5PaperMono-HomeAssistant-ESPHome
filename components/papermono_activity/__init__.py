@@ -11,6 +11,7 @@ CONF_M5PM1_ID = "m5pm1_id"
 CONF_RTC_ID = "rtc_id"
 CONF_DISPLAY_ID = "display_id"
 CONF_CONTROLS_VIEW = "controls_view"
+CONF_PENDING_CONTROLS_ENTRY = "pending_controls_entry"
 CONF_TIMEOUT = "timeout"
 CONF_ON_BRIGHTNESS = "on_brightness"
 CONF_TIME_ID = "time_id"
@@ -58,6 +59,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_RTC_ID): cv.use_id(papermono_rtc.PaperMonoRtcComponent),
         cv.Required(CONF_DISPLAY_ID): cv.use_id(papermono_epaper_display.PaperMonoEpaper),
         cv.Required(CONF_CONTROLS_VIEW): cv.use_id(globals.GlobalsComponent),
+        cv.Required(CONF_PENDING_CONTROLS_ENTRY): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_TIME_ID): cv.use_id(time.RealTimeClock),
         cv.Required(CONF_HA_CONNECTION_STATE): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_HA_WEATHER_STATE): cv.use_id(text_sensor.TextSensor),
@@ -87,6 +89,7 @@ async def to_code(config):
     rtc = await cg.get_variable(config[CONF_RTC_ID])
     display = await cg.get_variable(config[CONF_DISPLAY_ID])
     controls_view = await cg.get_variable(config[CONF_CONTROLS_VIEW])
+    pending_controls_entry = await cg.get_variable(config[CONF_PENDING_CONTROLS_ENTRY])
     ha_time = await cg.get_variable(config[CONF_TIME_ID])
     ha_connection_state = await cg.get_variable(config[CONF_HA_CONNECTION_STATE])
     ha_weather_state = await cg.get_variable(config[CONF_HA_WEATHER_STATE])
@@ -109,6 +112,7 @@ async def to_code(config):
     cg.add(var.set_rtc(rtc))
     cg.add(var.set_display(display))
     cg.add(var.set_controls_view(controls_view))
+    cg.add(var.set_pending_controls_entry(pending_controls_entry))
     cg.add(var.set_time(ha_time))
     cg.add(var.set_ha_connection_state(ha_connection_state))
     cg.add(var.set_ha_weather_state(ha_weather_state))

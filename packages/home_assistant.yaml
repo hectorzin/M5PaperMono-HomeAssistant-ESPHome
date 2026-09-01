@@ -139,6 +139,14 @@ script:
           id: interaction_feedback_output
           level: 0%
 
+  - id: ha_controls_action_blocked
+    parameters:
+      slot: int
+    then:
+      - lambda: |-
+          ESP_LOGI("control", "Controls action blocked: slot=%d type=%s, HA not ready",
+                   slot, id(controls_id).type_at(slot));
+
   - id: controls_refresh_partial
     mode: restart
     then:
@@ -156,142 +164,214 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && (id(controls_id).state_at(slot) == "on" || id(controls_id).state_at(slot) == "off");'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          ESP_LOGI("control", "HA action: light.toggle entity=%s", id(controls_id).entity_id_at(slot));
-      - homeassistant.action:
-          action: light.toggle
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && (id(controls_id).state_at(slot) == "on" || id(controls_id).state_at(slot) == "off");'
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                ESP_LOGI("control", "Controls action: slot=%d type=light action=toggle", slot);
+            - homeassistant.action:
+                action: light.toggle
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_light_on
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "off";'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - homeassistant.action:
-          action: light.turn_on
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "off";'
+                then:
+                  - script.execute: interaction_feedback
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_light_off
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - homeassistant.action:
-          action: light.turn_off
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+                then:
+                  - script.execute: interaction_feedback
+            - homeassistant.action:
+                action: light.turn_off
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_switch_toggle
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && (id(controls_id).state_at(slot) == "on" || id(controls_id).state_at(slot) == "off");'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          ESP_LOGI("control", "HA action: switch.toggle entity=%s", id(controls_id).entity_id_at(slot));
-      - homeassistant.action:
-          action: switch.toggle
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && (id(controls_id).state_at(slot) == "on" || id(controls_id).state_at(slot) == "off");'
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                ESP_LOGI("control", "HA action: switch.toggle entity=%s", id(controls_id).entity_id_at(slot));
+            - homeassistant.action:
+                action: switch.toggle
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_switch_on
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "off";'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - homeassistant.action:
-          action: switch.turn_on
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "off";'
+                then:
+                  - script.execute: interaction_feedback
+            - homeassistant.action:
+                action: switch.turn_on
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_switch_off
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - homeassistant.action:
-          action: switch.turn_off
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+                then:
+                  - script.execute: interaction_feedback
+            - homeassistant.action:
+                action: switch.turn_off
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_media_player_previous
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-            - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=previous", slot);'
-            - homeassistant.action:
-                action: media_player.media_previous_track
-                data:
-                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-            - script.execute: controls_refresh_partial
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK);'
+                then:
+                  - script.execute: interaction_feedback
+                  - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=previous", slot);'
+                  - homeassistant.action:
+                      action: media_player.media_previous_track
+                      data:
+                        entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                  - script.execute: controls_refresh_partial
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_media_player_next
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-            - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=next", slot);'
-            - homeassistant.action:
-                action: media_player.media_next_track
-                data:
-                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-            - script.execute: controls_refresh_partial
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK);'
+                then:
+                  - script.execute: interaction_feedback
+                  - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=next", slot);'
+                  - homeassistant.action:
+                      action: media_player.media_next_track
+                      data:
+                        entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                  - script.execute: controls_refresh_partial
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_media_player_play_pause
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "playing" && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PAUSE);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-            - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=pause", slot);'
-            - homeassistant.action:
-                action: media_player.media_pause
-                data:
-                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-            - script.execute: controls_refresh_partial
-          else:
             - if:
                 condition:
-                  lambda: |-
-                    const std::string state = id(controls_id).state_at(slot);
-                    return id(controls_id).state_valid(slot) && (state == "paused" || state == "idle" || state == "standby" || state == "off") &&
-                           id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PLAY);
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "playing" && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PAUSE);'
                 then:
                   - script.execute: interaction_feedback
-                  - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=play", slot);'
+                  - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=pause", slot);'
                   - homeassistant.action:
-                      action: media_player.media_play
+                      action: media_player.media_pause
                       data:
                         entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
                   - script.execute: controls_refresh_partial
+                else:
+                  - if:
+                      condition:
+                        lambda: |-
+                          const std::string state = id(controls_id).state_at(slot);
+                          return id(controls_id).state_valid(slot) && (state == "paused" || state == "idle" || state == "standby" || state == "off") &&
+                                 id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PLAY);
+                      then:
+                        - script.execute: interaction_feedback
+                        - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=play", slot);'
+                        - homeassistant.action:
+                            action: media_player.media_play
+                            data:
+                              entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                        - script.execute: controls_refresh_partial
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_media_player_volume
     parameters:
       slot: int
@@ -299,29 +379,37 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_VOLUME_SET) && id(controls_id).media_volume_valid(slot);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
             - if:
                 condition:
-                  lambda: |-
-                    const float old_value = id(controls_id).media_volume_at(slot);
-                    const float new_value = std::max(0.0f, std::min(1.0f, old_value + direction * 0.05f));
-                    return new_value != old_value;
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_VOLUME_SET) && id(controls_id).media_volume_valid(slot);'
                 then:
-                  - script.execute: interaction_feedback
-            - lambda: |-
-                const float old_value = id(controls_id).media_volume_at(slot);
-                const float new_value = std::max(0.0f, std::min(1.0f, old_value + direction * 0.05f));
-                id(controls_id).set_media_volume_optimistic(slot, new_value);
-                ESP_LOGI("control", "Media player volume optimistic: slot=%d old=%.2f new=%.2f", slot, old_value, new_value);
-            - script.execute: controls_refresh_partial
-            - homeassistant.action:
-                action: media_player.volume_set
-                data:
-                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-                data_template:
-                  volume_level: !lambda |-
-                    return id(controls_id).media_volume_at(slot);
+                  - if:
+                      condition:
+                        lambda: |-
+                          const float old_value = id(controls_id).media_volume_at(slot);
+                          const float new_value = std::max(0.0f, std::min(1.0f, old_value + direction * 0.05f));
+                          return new_value != old_value;
+                      then:
+                        - script.execute: interaction_feedback
+                  - lambda: |-
+                      const float old_value = id(controls_id).media_volume_at(slot);
+                      const float new_value = std::max(0.0f, std::min(1.0f, old_value + direction * 0.05f));
+                      id(controls_id).set_media_volume_optimistic(slot, new_value);
+                      ESP_LOGI("control", "Media player volume optimistic: slot=%d old=%.2f new=%.2f", slot, old_value, new_value);
+                  - script.execute: controls_refresh_partial
+                  - homeassistant.action:
+                      action: media_player.volume_set
+                      data:
+                        entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                      data_template:
+                        volume_level: !lambda |-
+                          return id(controls_id).media_volume_at(slot);
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_media_player_volume_up
     parameters:
       slot: int
@@ -344,48 +432,64 @@ script:
     then:
       - if:
           condition:
-            lambda: |-
-              const float value = id(controls_id).number_valid(slot, "brightness") ? id(controls_id).number_at(slot, "brightness") : 128.0f;
-              return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on" && std::max(0.0f, value - 32.0f) != value;
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          const float value = id(controls_id).number_valid(slot, "brightness")
-              ? id(controls_id).number_at(slot, "brightness") : 128.0f;
-          ESP_LOGI("control", "HA action: light.turn_on entity=%s brightness=%.0f", id(controls_id).entity_id_at(slot), std::max(0.0f, value - 32.0f));
-      - homeassistant.action:
-          action: light.turn_on
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-          data_template:
-            brightness: !lambda |-
-              float value = id(controls_id).number_valid(slot, "brightness")
-                  ? id(controls_id).number_at(slot, "brightness") : 128.0f;
-              return std::max(0.0f, value - 32.0f);
+            - if:
+                condition:
+                  lambda: |-
+                    const float value = id(controls_id).number_valid(slot, "brightness") ? id(controls_id).number_at(slot, "brightness") : 128.0f;
+                    return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on" && std::max(0.0f, value - 32.0f) != value;
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                const float value = id(controls_id).number_valid(slot, "brightness")
+                    ? id(controls_id).number_at(slot, "brightness") : 128.0f;
+                ESP_LOGI("control", "HA action: light.turn_on entity=%s brightness=%.0f", id(controls_id).entity_id_at(slot), std::max(0.0f, value - 32.0f));
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                data_template:
+                  brightness: !lambda |-
+                    float value = id(controls_id).number_valid(slot, "brightness")
+                        ? id(controls_id).number_at(slot, "brightness") : 128.0f;
+                    return std::max(0.0f, value - 32.0f);
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_light_brightness_up
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: |-
-              const float value = id(controls_id).number_valid(slot, "brightness") ? id(controls_id).number_at(slot, "brightness") : 128.0f;
-              return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on" && std::min(255.0f, value + 32.0f) != value;
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          const float value = id(controls_id).number_valid(slot, "brightness")
-              ? id(controls_id).number_at(slot, "brightness") : 128.0f;
-          ESP_LOGI("control", "HA action: light.turn_on entity=%s brightness=%.0f", id(controls_id).entity_id_at(slot), std::min(255.0f, value + 32.0f));
-      - homeassistant.action:
-          action: light.turn_on
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-          data_template:
-            brightness: !lambda |-
-              float value = id(controls_id).number_valid(slot, "brightness")
-                  ? id(controls_id).number_at(slot, "brightness") : 128.0f;
-              return std::min(255.0f, value + 32.0f);
+            - if:
+                condition:
+                  lambda: |-
+                    const float value = id(controls_id).number_valid(slot, "brightness") ? id(controls_id).number_at(slot, "brightness") : 128.0f;
+                    return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on" && std::min(255.0f, value + 32.0f) != value;
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                const float value = id(controls_id).number_valid(slot, "brightness")
+                    ? id(controls_id).number_at(slot, "brightness") : 128.0f;
+                ESP_LOGI("control", "HA action: light.turn_on entity=%s brightness=%.0f", id(controls_id).entity_id_at(slot), std::min(255.0f, value + 32.0f));
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                data_template:
+                  brightness: !lambda |-
+                    float value = id(controls_id).number_valid(slot, "brightness")
+                        ? id(controls_id).number_at(slot, "brightness") : 128.0f;
+                    return std::min(255.0f, value + 32.0f);
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: color_preview_apply
     parameters:
       slot: int
@@ -415,15 +519,23 @@ script:
     parameters:
       slot: int
     then:
-      - homeassistant.action:
-          action: light.turn_on
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-          data_template:
-            hs_color: "{{ [hue, saturation] }}"
-          variables:
-            hue: !lambda 'return id(controls_id).color_valid(slot) ? id(controls_id).hue_at(slot) : 0.0f;'
-            saturation: !lambda 'return id(controls_id).color_valid(slot) ? id(controls_id).saturation_at(slot) : 100.0f;'
+      - if:
+          condition:
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
+          then:
+            - homeassistant.action:
+                action: light.turn_on
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                data_template:
+                  hs_color: "{{ [hue, saturation] }}"
+                variables:
+                  hue: !lambda 'return id(controls_id).color_valid(slot) ? id(controls_id).hue_at(slot) : 0.0f;'
+                  saturation: !lambda 'return id(controls_id).color_valid(slot) ? id(controls_id).saturation_at(slot) : 100.0f;'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_light_color_enter
     parameters:
       slot: int
@@ -472,56 +584,72 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          static const char *names[] = {"RED", "YELLOW", "WHITE", "GREEN", "CYAN", "BLUE", "MAGENTA"};
-          static const float hues[] = {0.0f, 60.0f, 0.0f, 120.0f, 180.0f, 240.0f, 300.0f};
-          const int old_step = id(controls_id).color_valid(slot) ? id(controls_id).color_step_at(slot) : 0;
-          const int target_step = (old_step + 6) % 7;
-          const float target_hue = target_step == 2 ? id(controls_id).hue_at(slot) : hues[target_step];
-          const float target_sat = target_step == 2 ? 0.0f : id(controls_id).chromatic_saturation_at(slot);
-          id(controls_id).set_color_step(slot, target_step, target_hue, target_sat);
-          const bool red = target_step == 0 || target_step == 1 || target_step == 6 || target_step == 2;
-          const bool green = target_step == 1 || target_step == 3 || target_step == 4 || target_step == 2;
-          const bool blue = target_step == 4 || target_step == 5 || target_step == 6 || target_step == 2;
-          ESP_LOGI("color", "Color step: slot=%d direction=- old=%s target=%s hue=%.0f sat=%.0f RGB=%d%d%d",
-                   slot, names[old_step], names[target_step], target_hue, target_sat, red, green, blue);
-      - script.execute:
-          id: color_preview_apply
-          slot: !lambda 'return slot;'
-      - script.execute:
-          id: color_preview_send
-          slot: !lambda 'return slot;'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                static const char *names[] = {"RED", "YELLOW", "WHITE", "GREEN", "CYAN", "BLUE", "MAGENTA"};
+                static const float hues[] = {0.0f, 60.0f, 0.0f, 120.0f, 180.0f, 240.0f, 300.0f};
+                const int old_step = id(controls_id).color_valid(slot) ? id(controls_id).color_step_at(slot) : 0;
+                const int target_step = (old_step + 6) % 7;
+                const float target_hue = target_step == 2 ? id(controls_id).hue_at(slot) : hues[target_step];
+                const float target_sat = target_step == 2 ? 0.0f : id(controls_id).chromatic_saturation_at(slot);
+                id(controls_id).set_color_step(slot, target_step, target_hue, target_sat);
+                const bool red = target_step == 0 || target_step == 1 || target_step == 6 || target_step == 2;
+                const bool green = target_step == 1 || target_step == 3 || target_step == 4 || target_step == 2;
+                const bool blue = target_step == 4 || target_step == 5 || target_step == 6 || target_step == 2;
+                ESP_LOGI("color", "Color step: slot=%d direction=- old=%s target=%s hue=%.0f sat=%.0f RGB=%d%d%d",
+                         slot, names[old_step], names[target_step], target_hue, target_sat, red, green, blue);
+            - script.execute:
+                id: color_preview_apply
+                slot: !lambda 'return slot;'
+            - script.execute:
+                id: color_preview_send
+                slot: !lambda 'return slot;'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_light_hue_up
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          static const char *names[] = {"RED", "YELLOW", "WHITE", "GREEN", "CYAN", "BLUE", "MAGENTA"};
-          static const float hues[] = {0.0f, 60.0f, 0.0f, 120.0f, 180.0f, 240.0f, 300.0f};
-          const int old_step = id(controls_id).color_valid(slot) ? id(controls_id).color_step_at(slot) : 0;
-          const int target_step = (old_step + 1) % 7;
-          const float target_hue = target_step == 2 ? id(controls_id).hue_at(slot) : hues[target_step];
-          const float target_sat = target_step == 2 ? 0.0f : id(controls_id).chromatic_saturation_at(slot);
-          id(controls_id).set_color_step(slot, target_step, target_hue, target_sat);
-          const bool red = target_step == 0 || target_step == 1 || target_step == 6 || target_step == 2;
-          const bool green = target_step == 1 || target_step == 3 || target_step == 4 || target_step == 2;
-          const bool blue = target_step == 4 || target_step == 5 || target_step == 6 || target_step == 2;
-          ESP_LOGI("color", "Color step: slot=%d direction=+ old=%s target=%s hue=%.0f sat=%.0f RGB=%d%d%d",
-                   slot, names[old_step], names[target_step], target_hue, target_sat, red, green, blue);
-      - script.execute:
-          id: color_preview_apply
-          slot: !lambda 'return slot;'
-      - script.execute:
-          id: color_preview_send
-          slot: !lambda 'return slot;'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                static const char *names[] = {"RED", "YELLOW", "WHITE", "GREEN", "CYAN", "BLUE", "MAGENTA"};
+                static const float hues[] = {0.0f, 60.0f, 0.0f, 120.0f, 180.0f, 240.0f, 300.0f};
+                const int old_step = id(controls_id).color_valid(slot) ? id(controls_id).color_step_at(slot) : 0;
+                const int target_step = (old_step + 1) % 7;
+                const float target_hue = target_step == 2 ? id(controls_id).hue_at(slot) : hues[target_step];
+                const float target_sat = target_step == 2 ? 0.0f : id(controls_id).chromatic_saturation_at(slot);
+                id(controls_id).set_color_step(slot, target_step, target_hue, target_sat);
+                const bool red = target_step == 0 || target_step == 1 || target_step == 6 || target_step == 2;
+                const bool green = target_step == 1 || target_step == 3 || target_step == 4 || target_step == 2;
+                const bool blue = target_step == 4 || target_step == 5 || target_step == 6 || target_step == 2;
+                ESP_LOGI("color", "Color step: slot=%d direction=+ old=%s target=%s hue=%.0f sat=%.0f RGB=%d%d%d",
+                         slot, names[old_step], names[target_step], target_hue, target_sat, red, green, blue);
+            - script.execute:
+                id: color_preview_apply
+                slot: !lambda 'return slot;'
+            - script.execute:
+                id: color_preview_send
+                slot: !lambda 'return slot;'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: controls_positive
     parameters:
       slot: int
@@ -724,50 +852,66 @@ script:
     then:
       - if:
           condition:
-            lambda: |-
-              if (!id(controls_id).state_valid(slot) || !id(controls_id).number_valid(slot, "target_temperature")) return false;
-              const float value = id(controls_id).number_at(slot, "target_temperature");
-              const float minimum = id(controls_id).number_valid(slot, "min_temperature") ? id(controls_id).number_at(slot, "min_temperature") : -INFINITY;
-              return value > minimum;
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          const float value = id(controls_id).number_valid(slot, "target_temperature")
-              ? id(controls_id).number_at(slot, "target_temperature") - 0.5f : 20.0f;
-          ESP_LOGI("control", "HA action: climate.set_temperature entity=%s temperature=%.1f", id(controls_id).entity_id_at(slot), value);
-      - homeassistant.action:
-          action: climate.set_temperature
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-          data_template:
-            temperature: !lambda |-
-              return id(controls_id).number_valid(slot, "target_temperature")
-                  ? id(controls_id).number_at(slot, "target_temperature") - 0.5f : 20.0f;
+            - if:
+                condition:
+                  lambda: |-
+                    if (!id(controls_id).state_valid(slot) || !id(controls_id).number_valid(slot, "target_temperature")) return false;
+                    const float value = id(controls_id).number_at(slot, "target_temperature");
+                    const float minimum = id(controls_id).number_valid(slot, "min_temperature") ? id(controls_id).number_at(slot, "min_temperature") : -INFINITY;
+                    return value > minimum;
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                const float value = id(controls_id).number_valid(slot, "target_temperature")
+                    ? id(controls_id).number_at(slot, "target_temperature") - 0.5f : 20.0f;
+                ESP_LOGI("control", "HA action: climate.set_temperature entity=%s temperature=%.1f", id(controls_id).entity_id_at(slot), value);
+            - homeassistant.action:
+                action: climate.set_temperature
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                data_template:
+                  temperature: !lambda |-
+                    return id(controls_id).number_valid(slot, "target_temperature")
+                        ? id(controls_id).number_at(slot, "target_temperature") - 0.5f : 20.0f;
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_climate_temperature_up
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: |-
-              if (!id(controls_id).state_valid(slot) || !id(controls_id).number_valid(slot, "target_temperature")) return false;
-              const float value = id(controls_id).number_at(slot, "target_temperature");
-              const float maximum = id(controls_id).number_valid(slot, "max_temperature") ? id(controls_id).number_at(slot, "max_temperature") : INFINITY;
-              return value < maximum;
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          const float value = id(controls_id).number_valid(slot, "target_temperature")
-              ? id(controls_id).number_at(slot, "target_temperature") + 0.5f : 21.0f;
-          ESP_LOGI("control", "HA action: climate.set_temperature entity=%s temperature=%.1f", id(controls_id).entity_id_at(slot), value);
-      - homeassistant.action:
-          action: climate.set_temperature
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-          data_template:
-            temperature: !lambda |-
-              return id(controls_id).number_valid(slot, "target_temperature")
-                  ? id(controls_id).number_at(slot, "target_temperature") + 0.5f : 21.0f;
+            - if:
+                condition:
+                  lambda: |-
+                    if (!id(controls_id).state_valid(slot) || !id(controls_id).number_valid(slot, "target_temperature")) return false;
+                    const float value = id(controls_id).number_at(slot, "target_temperature");
+                    const float maximum = id(controls_id).number_valid(slot, "max_temperature") ? id(controls_id).number_at(slot, "max_temperature") : INFINITY;
+                    return value < maximum;
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                const float value = id(controls_id).number_valid(slot, "target_temperature")
+                    ? id(controls_id).number_at(slot, "target_temperature") + 0.5f : 21.0f;
+                ESP_LOGI("control", "HA action: climate.set_temperature entity=%s temperature=%.1f", id(controls_id).entity_id_at(slot), value);
+            - homeassistant.action:
+                action: climate.set_temperature
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                data_template:
+                  temperature: !lambda |-
+                    return id(controls_id).number_valid(slot, "target_temperature")
+                        ? id(controls_id).number_at(slot, "target_temperature") + 0.5f : 21.0f;
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_climate_set_hvac_mode
     parameters:
       slot: int
@@ -775,145 +919,209 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          ESP_LOGI("control", "Controls action: climate set_hvac_mode=%s", mode.c_str());
-      - homeassistant.action:
-          action: climate.set_hvac_mode
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-          data_template:
-            hvac_mode: !lambda 'return mode;'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot);'
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                ESP_LOGI("control", "Controls action: climate set_hvac_mode=%s", mode.c_str());
+            - homeassistant.action:
+                action: climate.set_hvac_mode
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                data_template:
+                  hvac_mode: !lambda 'return mode;'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_climate_power_toggle
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot);'
-          then:
-            - script.execute: interaction_feedback
-      - if:
-          condition:
-            lambda: |-
-              return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "off";
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
             - if:
                 condition:
-                  lambda: 'return !id(controls_id).last_active_mode_at(slot).empty();'
+                  lambda: 'return id(controls_id).state_valid(slot);'
                 then:
-                  - lambda: |-
-                      ESP_LOGI("control", "HA action: climate.set_hvac_mode entity=%s hvac_mode=%s",
-                               id(controls_id).entity_id_at(slot), id(controls_id).last_active_mode_at(slot).c_str());
-                  - homeassistant.action:
-                      action: climate.set_hvac_mode
-                      data:
-                        entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
-                      data_template:
-                        hvac_mode: !lambda 'return id(controls_id).last_active_mode_at(slot);'
+                  - script.execute: interaction_feedback
+            - if:
+                condition:
+                  lambda: |-
+                    return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "off";
+                then:
+                  - if:
+                      condition:
+                        lambda: 'return !id(controls_id).last_active_mode_at(slot).empty();'
+                      then:
+                        - lambda: |-
+                            ESP_LOGI("control", "HA action: climate.set_hvac_mode entity=%s hvac_mode=%s",
+                                     id(controls_id).entity_id_at(slot), id(controls_id).last_active_mode_at(slot).c_str());
+                        - homeassistant.action:
+                            action: climate.set_hvac_mode
+                            data:
+                              entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                            data_template:
+                              hvac_mode: !lambda 'return id(controls_id).last_active_mode_at(slot);'
+                      else:
+                        - lambda: |-
+                            ESP_LOGI("control", "HA action: climate.turn_on entity=%s", id(controls_id).entity_id_at(slot));
+                        - homeassistant.action:
+                            action: climate.turn_on
+                            data:
+                              entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
                 else:
                   - lambda: |-
-                      ESP_LOGI("control", "HA action: climate.turn_on entity=%s", id(controls_id).entity_id_at(slot));
+                      ESP_LOGI("control", "HA action: climate.turn_off entity=%s", id(controls_id).entity_id_at(slot));
                   - homeassistant.action:
-                      action: climate.turn_on
+                      action: climate.turn_off
                       data:
                         entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
           else:
-            - lambda: |-
-                ESP_LOGI("control", "HA action: climate.turn_off entity=%s", id(controls_id).entity_id_at(slot));
-            - homeassistant.action:
-                action: climate.turn_off
-                data:
-                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_cover_open
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - homeassistant.action:
-          action: cover.open_cover
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot);'
+                then:
+                  - script.execute: interaction_feedback
+            - homeassistant.action:
+                action: cover.open_cover
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_cover_stop
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - homeassistant.action:
-          action: cover.stop_cover
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot);'
+                then:
+                  - script.execute: interaction_feedback
+            - homeassistant.action:
+                action: cover.stop_cover
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_cover_close
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - homeassistant.action:
-          action: cover.close_cover
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot);'
+                then:
+                  - script.execute: interaction_feedback
+            - homeassistant.action:
+                action: cover.close_cover
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_vacuum_start
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          ESP_LOGI("control", "HA action: vacuum.start entity=%s", id(controls_id).entity_id_at(slot));
-      - homeassistant.action:
-          action: vacuum.start
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot);'
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                ESP_LOGI("control", "HA action: vacuum.start entity=%s", id(controls_id).entity_id_at(slot));
+            - homeassistant.action:
+                action: vacuum.start
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_vacuum_pause
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          ESP_LOGI("control", "HA action: vacuum.pause entity=%s", id(controls_id).entity_id_at(slot));
-      - homeassistant.action:
-          action: vacuum.pause
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot);'
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                ESP_LOGI("control", "HA action: vacuum.pause entity=%s", id(controls_id).entity_id_at(slot));
+            - homeassistant.action:
+                action: vacuum.pause
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
   - id: control_vacuum_return_to_base
     parameters:
       slot: int
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_valid(slot);'
+            lambda: 'return id(papermono_activity_hub).is_ha_controls_ready();'
           then:
-            - script.execute: interaction_feedback
-      - lambda: |-
-          ESP_LOGI("control", "HA action: vacuum.return_to_base entity=%s", id(controls_id).entity_id_at(slot));
-      - homeassistant.action:
-          action: vacuum.return_to_base
-          data:
-            entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - if:
+                condition:
+                  lambda: 'return id(controls_id).state_valid(slot);'
+                then:
+                  - script.execute: interaction_feedback
+            - lambda: |-
+                ESP_LOGI("control", "HA action: vacuum.return_to_base entity=%s", id(controls_id).entity_id_at(slot));
+            - homeassistant.action:
+                action: vacuum.return_to_base
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
 
-# Control state arrivals request a coalesced PARTIAL only while the controls
-# page is visible; the renderer still uses the cached HA states on every draw.
+      # Control state arrivals request a coalesced PARTIAL only while the controls
+      # page is visible; the renderer still uses the cached HA states on every draw.
+          else:
+            - script.execute:
+                id: ha_controls_action_blocked
+                slot: !lambda 'return slot;'
 interval:
   - interval: 1s
     then:
@@ -957,8 +1165,12 @@ interval:
                     id(ha_connection_state) = 1;
                     id(ha_connecting_since_ms) = 0;
                     id(m5pm1_pmu).log_pmic_wake_recovery_summary_if_needed();
-                    if (!id(controls_view))
-                      id(epaper_display).update();
+                    if (!id(controls_view) && !id(pending_controls_entry)) {
+                      if (id(epaper_display).has_baseline())
+                        id(epaper_display).update_partial(0, 0, 480, 800);
+                      else
+                        id(epaper_display).update();
+                    }
                   }
                 } else {
                   id(ha_ever_connected) = true;
@@ -976,6 +1188,10 @@ interval:
                   id(ha_using_demo) = true;
                   id(wifi_transition_pending) = false;
                   id(ha_connection_state) = 2;
-                  if (!id(controls_view))
-                    id(epaper_display).update();
+                  if (!id(controls_view) && !id(pending_controls_entry)) {
+                    if (id(epaper_display).has_baseline())
+                      id(epaper_display).update_partial(0, 0, 480, 800);
+                    else
+                      id(epaper_display).update();
+                  }
                 }

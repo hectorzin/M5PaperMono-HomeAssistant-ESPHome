@@ -164,6 +164,21 @@ void PaperMonoActivityComponent::loop() {
     this->light_sleep_wake_recovery_->value() = false;
   }
 
+  const bool ha_controls_ready = this->is_ha_controls_ready();
+  if (ha_controls_ready && !this->ha_controls_ready_logged_) {
+    ESP_LOGI(TAG, "Home Assistant ready for controls");
+    this->ha_controls_ready_logged_ = true;
+  } else if (!ha_controls_ready) {
+    this->ha_controls_ready_logged_ = false;
+  }
+
+  if (ha_controls_ready && this->pending_controls_entry_ != nullptr &&
+      this->pending_controls_entry_->value()) {
+    this->pending_controls_entry_->value() = false;
+    ESP_LOGI("control", "Home Assistant ready, opening Controls");
+    this->enter_controls();
+  }
+
   // Sleep Timeout is the only trigger for an initial power transition while
   // awake. Refresh Interval only re-arms light sleep after a periodic tick.
   if (!this->light_sleep_pending_ && this->shutdown_phase_ == ShutdownPhase::NONE &&
@@ -258,6 +273,13 @@ bool PaperMonoActivityComponent::is_network_api_ready_() const {
   return true;
 }
 
+bool PaperMonoActivityComponent::is_ha_controls_ready() const {
+  if (this->ha_connection_state_ != nullptr && this->ha_connection_state_->value() != 1) {
+    return false;
+  }
+  return this->is_network_api_ready_();
+}
+
 bool PaperMonoActivityComponent::is_home_assistant_connected_() const {
 #ifdef USE_API
   if (api::global_api_server == nullptr) {
@@ -316,6 +338,33 @@ void PaperMonoActivityComponent::on_pickup_transition_() {
 }
 
 void PaperMonoActivityComponent::enter_controls() {
+  const bool ha_controls_ready = this->is_ha_controls_ready();
+  ESP_LOGI("control", "Controls navigation request: HA ready=%s", ha_controls_ready ? "yes" : "no");
+  if (!ha_controls_ready) {
+    const bool was_pending = this->pending_controls_entry_ != nullptr && this->pending_controls_entry_->value();
+    if (this->pending_controls_entry_ != nullptr) {
+      this->pending_controls_entry_->value() = true;
+    }
+    if (this->controls_view_ != nullptr) {
+      this->controls_view_->value() = false;
+    }
+    if (!was_pending) {
+      ESP_LOGI("control", "Controls entry pending: Home Assistant not ready");
+      if (this->display_ != nullptr) {
+        this->display_->request_refresh(papermono_epaper::RefreshPolicy::USER_INTERACTION,
+                                        papermono_epaper::RefreshKind::NORMAL, "controls_connecting");
+      }
+    }
+    return;
+  }
+
+  if (this->pending_controls_entry_ != nullptr) {
+    this->pending_controls_entry_->value() = false;
+  }
+  if (this->controls_view_ != nullptr && !this->controls_view_->value()) {
+    this->controls_view_->value() = true;
+    ESP_LOGI("control", "Controls view activated");
+  }
   this->cancel_light_sleep_();
   this->cancel_shutdown_();
   this->clear_wake_recovery_flag_();
@@ -344,7 +393,12 @@ void PaperMonoActivityComponent::enter_controls() {
                                   papermono_epaper::RefreshKind::NORMAL, "enter_controls");
 }
 
-void PaperMonoActivityComponent::exit_controls() { this->exit_controls_(false); }
+void PaperMonoActivityComponent::exit_controls() {
+  if (this->pending_controls_entry_ != nullptr) {
+    this->pending_controls_entry_->value() = false;
+  }
+  this->exit_controls_(false);
+}
 
 void PaperMonoActivityComponent::exit_controls_(bool preserve_sleep_pending) {
   if (!preserve_sleep_pending) {
@@ -947,7 +1001,14 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
            this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1, quiet_sleep_display,
            allow_partial ? "yes" : "no");
 
-  if (!allow_partial || this->display_ == nullptr) {
+  if (!allow_partial) {
+    ESP_LOGI(TAG, "Scheduler /%u: refresh skipped reason=controls_or_ha_connecting",
+             this->screensaver_refresh_minutes_());
+    return;
+  }
+  if (this->display_ == nullptr) {
+    ESP_LOGI(TAG, "Scheduler /%u: refresh skipped reason=display_unavailable",
+             this->screensaver_refresh_minutes_());
     return;
   }
   if (this->display_->is_pmic_recovery_failed()) {
@@ -977,18 +1038,18 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep
   }
 
   if (quiet_sleep_display && !this->sleep_timeout_light_sleep_cycle_) {
+    ESP_LOGI(TAG, "Scheduler /%u: refresh skipped reason=quiet_hours_shutdown",
+             this->screensaver_refresh_minutes_());
     this->request_quiet_hours_shutdown_(PowerTransitionSource::SCHEDULER);
-    return;
-  }
-
-  // Refresh Interval schedules timer wakes while already in light sleep. It
-  // must not make an awake device enter sleep before its inactivity deadline.
-  if (!this->light_sleep_pending_) {
     return;
   }
 
   this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC, papermono_epaper::RefreshKind::NORMAL,
                                   "scheduler");
+  if (!this->light_sleep_pending_) {
+    ESP_LOGI(TAG, "Scheduler /%u: awake refresh requested", this->screensaver_refresh_minutes_());
+    return;
+  }
   if (this->is_in_quiet_hours_()) {
     ESP_LOGD(TAG, "Quiet-hours override tick: staying awake until inactive aligned tick");
     return;
@@ -1358,6 +1419,10 @@ void PaperMonoActivityComponent::disable_wifi_for_sleep_() {
 void PaperMonoActivityComponent::enable_wifi_after_wake_(bool timer_wake) {
   if (this->light_sleep_wake_recovery_ != nullptr) {
     this->light_sleep_wake_recovery_->value() = true;
+  }
+  this->ha_controls_ready_logged_ = false;
+  if (!this->is_ha_controls_ready()) {
+    ESP_LOGI(TAG, "Wake: Home Assistant not ready");
   }
 
 #ifdef USE_WIFI

@@ -109,6 +109,9 @@ class PaperMonoActivityComponent : public Component {
   void set_rtc(papermono_rtc::PaperMonoRtcComponent *rtc) { this->rtc_ = rtc; }
   void set_display(papermono_epaper::PaperMonoEpaper *display) { this->display_ = display; }
   void set_controls_view(globals::GlobalsComponent<bool> *controls_view) { this->controls_view_ = controls_view; }
+  void set_pending_controls_entry(globals::GlobalsComponent<bool> *pending) {
+    this->pending_controls_entry_ = pending;
+  }
   void set_ha_connection_state(globals::GlobalsComponent<int> *state) { this->ha_connection_state_ = state; }
   void set_ha_weather_state(text_sensor::TextSensor *sensor) { this->ha_weather_state_ = sensor; }
   void set_ha_indoor_temperature(sensor::Sensor *sensor) { this->ha_indoor_temperature_ = sensor; }
@@ -151,6 +154,10 @@ class PaperMonoActivityComponent : public Component {
 
   void report_activity(ActivitySource source);
   void report_touch() { this->report_activity(ActivitySource::TOUCH); }
+
+  // True when Wi-Fi and the native API (with state subscription) are ready and
+  // ha_connection_state is REAL (not CONNECTING or DEMO).
+  bool is_ha_controls_ready() const;
 
   void enter_controls();
   void exit_controls();
@@ -244,6 +251,7 @@ class PaperMonoActivityComponent : public Component {
   papermono_rtc::PaperMonoRtcComponent *rtc_{nullptr};
   papermono_epaper::PaperMonoEpaper *display_{nullptr};
   globals::GlobalsComponent<bool> *controls_view_{nullptr};
+  globals::GlobalsComponent<bool> *pending_controls_entry_{nullptr};
   globals::GlobalsComponent<int> *ha_connection_state_{nullptr};
   text_sensor::TextSensor *ha_weather_state_{nullptr};
   sensor::Sensor *ha_indoor_temperature_{nullptr};
@@ -298,6 +306,7 @@ class PaperMonoActivityComponent : public Component {
   uint32_t manual_light_wake_seconds_{0};
   uint32_t manual_shutdown_wake_seconds_{0};
   uint32_t last_motion_log_ms_{0};
+  bool ha_controls_ready_logged_{false};
 };
 
 }  // namespace esphome::papermono_activity

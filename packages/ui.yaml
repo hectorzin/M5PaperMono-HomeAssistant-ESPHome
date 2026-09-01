@@ -44,6 +44,7 @@ esphome:
       then:
         - lambda: |-
             id(controls_view) = false;
+            id(pending_controls_entry) = false;
             id(controls_id).set_active_slot(-1);
             id(selected_control) = -1;
             id(controls_boot_touch_guard_until) = millis() + 3000U;
@@ -289,6 +290,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: pending_controls_entry
+    type: bool
+    restore_value: no
+    initial_value: 'false'
   - id: selected_control
     type: int
     restore_value: no
@@ -337,7 +342,7 @@ display:
       it.fill(Color::WHITE);
 
       if (!id(controls_view)) {
-        if (id(ha_connection_state) == 0) {
+        if (id(pending_controls_entry) || id(ha_connection_state) == 0) {
           it.image(240, 200, id(home_assistant_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
           it.printf(240, 370, id(font_connecting), Color::BLACK, TextAlign::TOP_CENTER, "CONECTANDO");
           if (id(wifi_connected_state))

@@ -18,6 +18,12 @@ constexpr uint32_t MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK = 16;
 constexpr uint32_t MEDIA_PLAYER_FEATURE_NEXT_TRACK = 32;
 constexpr uint32_t MEDIA_PLAYER_FEATURE_PLAY = 16384;
 
+enum class LightEditMode : uint8_t {
+  BRIGHTNESS = 0,
+  RGB = 1,
+  COLOR_TEMP = 2,
+};
+
 struct ControlEntry {
   std::string entity_id;
   std::string configured_name;
@@ -69,7 +75,13 @@ class Controls : public Component {
   bool modes_valid(size_t index) const;
   std::string modes_at(size_t index) const;
   bool color_capable(size_t index) const;
+  bool light_supports_rgb(size_t index) const;
+  bool light_supports_color_temp(size_t index) const;
   bool light_supports_brightness(size_t index) const;
+  LightEditMode light_edit_mode_at(size_t index) const {
+    return index < count_ ? light_edit_mode_[index] : LightEditMode::BRIGHTNESS;
+  }
+  bool cycle_light_edit_mode(size_t index);
   bool color_valid(size_t index) const;
   float hue_at(size_t index) const;
   float saturation_at(size_t index) const;
@@ -97,8 +109,8 @@ class Controls : public Component {
   bool color_preview_started(size_t index) const {
     return index < count_ && color_preview_started_[index];
   }
-  bool color_edit_mode_at(size_t index) const { return index < count_ && color_edit_mode_[index]; }
-  void set_color_edit_mode(size_t index, bool value) { if (index < count_) color_edit_mode_[index] = value; }
+  bool color_edit_mode_at(size_t index) const { return index < count_ && light_edit_mode_[index] == LightEditMode::RGB; }
+  void set_color_edit_mode(size_t index, bool value) { if (index < count_) light_edit_mode_[index] = value ? LightEditMode::RGB : LightEditMode::BRIGHTNESS; }
   int active_slot() const { return active_slot_; }
   void set_active_slot(int slot) { active_slot_ = (slot >= 0 && static_cast<size_t>(slot) < count_) ? slot : -1; }
   bool number_valid(size_t index, const char *field) const;
@@ -117,7 +129,7 @@ class Controls : public Component {
   void media_volume_confirmed_(size_t index, float value);
   std::vector<ControlEntry> entries_{};
   std::vector<std::string> last_active_modes_{};
-  std::vector<bool> color_edit_mode_{};
+  std::vector<LightEditMode> light_edit_mode_{};
   std::vector<float> hue_{};
   std::vector<float> saturation_{};
   std::vector<bool> color_valid_{};

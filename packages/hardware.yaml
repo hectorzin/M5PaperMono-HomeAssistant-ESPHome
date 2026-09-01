@@ -268,21 +268,26 @@ touchscreen:
           } else if (std::string(slot_type) == "light") {
             if (id(controls_id).light_supports_brightness(slot)) {
               const bool light_on = id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";
-              const bool color_capable = id(controls_id).color_capable(slot);
-              const bool center_tap = local_x >= 60 && local_x < 155 && local_y >= 55 && local_y < 180;
-              // An RGB light shows its bulb while OFF and its percentage arc
-              // while ON.  The former must always remain the normal toggle;
-              // only the visible percentage/COLOR area enters color mode.
-              if (color_capable && light_on && center_tap) {
-                if (id(controls_id).color_edit_mode_at(slot)) {
-                  ESP_LOGI("control", "Controls action: slot=%d color_exit", slot);
-                  id(control_light_color_exit).execute(slot);
-                } else {
-                  ESP_LOGI("control", "Controls action: slot=%d color_enter", slot);
-                  id(interaction_feedback).execute();
-                  id(control_light_color_enter).execute(slot);
+              const bool percentage_tap = local_x >= 60 && local_x < 155 && local_y >= 82 && local_y < 118;
+              if (light_on && percentage_tap) {
+                const auto previous_mode = id(controls_id).light_edit_mode_at(slot);
+                if (id(controls_id).cycle_light_edit_mode(slot)) {
+                  const auto next_mode = id(controls_id).light_edit_mode_at(slot);
+                  if (previous_mode != esphome::controls::LightEditMode::RGB &&
+                      next_mode == esphome::controls::LightEditMode::RGB)
+                    id(control_light_color_enter).execute(slot);
+                  else if (previous_mode == esphome::controls::LightEditMode::RGB &&
+                           next_mode != esphome::controls::LightEditMode::RGB)
+                    id(control_light_color_exit).execute(slot);
+                  if (previous_mode == esphome::controls::LightEditMode::RGB &&
+                      next_mode != esphome::controls::LightEditMode::RGB)
+                    if (next_mode == esphome::controls::LightEditMode::COLOR_TEMP) {
+                      id(controls_id).cycle_light_edit_mode(slot);
+                      id(controls_id).cycle_light_edit_mode(slot);
+                    }
+                  ESP_LOGI("control", "Controls action: slot=%d light_edit_mode_cycle", slot);
+                  action_detected = true;
                 }
-                action_detected = true;
               } else if (light_on && local_y >= 180 && local_y < 225) {
                 if (id(controls_id).color_edit_mode_at(slot)) {
                   if (local_x < 69) id(controls_negative).execute(slot);

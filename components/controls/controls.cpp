@@ -24,7 +24,7 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
   if (slot >= entries_.size()) {
     entries_.resize(slot + 1);
     last_active_modes_.resize(slot + 1);
-    color_edit_mode_.resize(slot + 1);
+    light_edit_mode_.resize(slot + 1);
     hue_.resize(slot + 1);
     saturation_.resize(slot + 1);
     color_valid_.resize(slot + 1);
@@ -165,6 +165,57 @@ bool Controls::color_capable(size_t index) const {
     }
   }
   return false;
+}
+bool Controls::light_supports_rgb(size_t index) const {
+  if (!modes_valid(index)) return false;
+  std::string raw = modes_at(index);
+  std::string token;
+  for (size_t i = 0; i <= raw.size(); i++) {
+    const char c = i < raw.size() ? raw[i] : '\0';
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+      token += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    } else if (!token.empty()) {
+      if (token == "hs" || token == "rgb" || token == "rgbw" || token == "rgbww") return true;
+      token.clear();
+    }
+  }
+  return false;
+}
+bool Controls::light_supports_color_temp(size_t index) const {
+  if (!modes_valid(index)) return false;
+  std::string raw = modes_at(index);
+  std::string token;
+  for (size_t i = 0; i <= raw.size(); i++) {
+    const char c = i < raw.size() ? raw[i] : '\0';
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+      token += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    } else if (!token.empty()) {
+      if (token == "color_temp") return true;
+      token.clear();
+    }
+  }
+  return false;
+}
+bool Controls::cycle_light_edit_mode(size_t index) {
+  if (index >= count_) return false;
+  const bool has_rgb = light_supports_rgb(index);
+  const bool has_color_temp = light_supports_color_temp(index);
+  if (!has_rgb && !has_color_temp) return false;
+  LightEditMode next = LightEditMode::BRIGHTNESS;
+  switch (light_edit_mode_[index]) {
+    case LightEditMode::BRIGHTNESS:
+      next = has_rgb ? LightEditMode::RGB : LightEditMode::COLOR_TEMP;
+      break;
+    case LightEditMode::RGB:
+      next = has_color_temp ? LightEditMode::COLOR_TEMP : LightEditMode::BRIGHTNESS;
+      break;
+    case LightEditMode::COLOR_TEMP:
+      next = LightEditMode::BRIGHTNESS;
+      break;
+  }
+  light_edit_mode_[index] = next;
+  refresh_();
+  return true;
 }
 bool Controls::light_supports_brightness(size_t index) const {
   if (!modes_valid(index)) return false;

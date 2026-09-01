@@ -791,7 +791,13 @@ display:
               draw_percentage_arc(x, y, brightness, brightness_valid);
               if (id(controls_id).color_edit_mode_at(index))
                 it.print(x + card_w / 2, y + 68, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "COLOR");
-              if (brightness_valid) it.printf(x + card_w / 2, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", brightness * 100.0f);
+              const auto edit_mode = id(controls_id).light_edit_mode_at(index);
+              if (edit_mode == esphome::controls::LightEditMode::RGB)
+                it.print(x + card_w / 2, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "RGB");
+              else if (edit_mode == esphome::controls::LightEditMode::COLOR_TEMP)
+                it.print(x + card_w / 2, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "K");
+              else if (brightness_valid)
+                it.printf(x + card_w / 2, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", brightness * 100.0f);
               button(x + 10, y + 185, "-"); button_icon(x + 79, y + 185, id(control_light_icon)); button(x + 148, y + 185, "+");
             } else {
             it.image(x + card_w / 2, y + 112, id(control_light_outline_large_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);

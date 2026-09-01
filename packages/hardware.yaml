@@ -251,12 +251,16 @@ touchscreen:
               const bool light_on = id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";
               const bool color_capable = id(controls_id).color_capable(slot);
               const bool center_tap = local_x >= 56 && local_x < 149 && local_y >= 55 && local_y < 160;
-              if (color_capable && center_tap) {
+              // An RGB light shows its bulb while OFF and its percentage arc
+              // while ON.  The former must always remain the normal toggle;
+              // only the visible percentage/COLOR area enters color mode.
+              if (color_capable && light_on && center_tap) {
                 if (id(controls_id).color_edit_mode_at(slot)) {
                   ESP_LOGI("control", "Controls action: slot=%d color_exit", slot);
                   id(control_light_color_exit).execute(slot);
                 } else {
                   ESP_LOGI("control", "Controls action: slot=%d color_enter", slot);
+                  id(interaction_feedback).execute();
                   id(control_light_color_enter).execute(slot);
                 }
                 action_detected = true;

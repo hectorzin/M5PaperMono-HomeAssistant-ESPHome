@@ -167,9 +167,9 @@ touchscreen:
           if (static_cast<int32_t>(millis() - id(controls_boot_touch_guard_until)) < 0)
             return;
           static const int CARD_X[] = {28, 247};
-          static const int CARD_Y[] = {115, 340, 565};
+          static const int CARD_Y[] = {70, 310, 550};
           const int CARD_W = 205;
-          const int CARD_H = 210;
+          const int CARD_H = 230;
 
           if (!id(controls_view)) {
             if (id(pending_controls_entry))
@@ -184,7 +184,7 @@ touchscreen:
                      id(controls_view) ? "controls" : (id(pending_controls_entry) ? "connecting" : "screensaver"));
             return;
           }
-          if (y < 100) {
+          if (y < 60 && x >= 100 && x < 360) {
             ESP_LOGI("control", "Controls back touch");
             id(controls_return_home).execute();
             return;
@@ -212,11 +212,11 @@ touchscreen:
             const int local_x = x - CARD_X[popup_visual % 2], local_y = y - CARD_Y[popup_visual / 2];
             const int row_h = modes.empty() ? 0 : modes.size() <= 4 ? 40 : modes.size() <= 6 ? 30 : modes.size() <= 7 ? 25 : 20;
             const bool in_popup = !modes.empty() && local_x >= 73 && local_x < 128 &&
-                                  local_y >= 165 - static_cast<int>(modes.size()) * row_h && local_y < 165;
+                                  local_y >= 185 - static_cast<int>(modes.size()) * row_h && local_y < 185;
             if (in_popup) {
-              const int mode_index = (164 - local_y) / row_h;
+              const int mode_index = (184 - local_y) / row_h;
               if (mode_index >= 0 && static_cast<size_t>(mode_index) < modes.size() &&
-                  local_y >= 165 - (mode_index + 1) * row_h && local_y < 165 - mode_index * row_h - 2) {
+                  local_y >= 185 - (mode_index + 1) * row_h && local_y < 185 - mode_index * row_h - 2) {
                 std::string current = id(controls_id).state_valid(popup_slot) ? id(controls_id).state_at(popup_slot) : "off";
                 for (char &c : current) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
                 if (modes[mode_index] != current) {
@@ -249,7 +249,7 @@ touchscreen:
                    x, y, slot, slot_type, local_x, local_y);
           // The first row contains the only configured controls in phase 1.
           bool action_detected = false;
-          if (std::string(slot_type) == "climate" && local_y >= 160 && local_y < 205) {
+          if (std::string(slot_type) == "climate" && local_y >= 180 && local_y < 225) {
             if (local_x < 70) {
               ESP_LOGI("control", "Controls action: slot=1 climate target_down");
               id(controls_negative).execute(slot);
@@ -269,7 +269,7 @@ touchscreen:
             if (id(controls_id).light_supports_brightness(slot)) {
               const bool light_on = id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";
               const bool color_capable = id(controls_id).color_capable(slot);
-              const bool center_tap = local_x >= 56 && local_x < 149 && local_y >= 55 && local_y < 160;
+              const bool center_tap = local_x >= 56 && local_x < 149 && local_y >= 55 && local_y < 180;
               // An RGB light shows its bulb while OFF and its percentage arc
               // while ON.  The former must always remain the normal toggle;
               // only the visible percentage/COLOR area enters color mode.
@@ -283,7 +283,7 @@ touchscreen:
                   id(control_light_color_enter).execute(slot);
                 }
                 action_detected = true;
-              } else if (light_on && local_y >= 160 && local_y < 205) {
+              } else if (light_on && local_y >= 180 && local_y < 225) {
                 if (id(controls_id).color_edit_mode_at(slot)) {
                   if (local_x < 70) id(controls_negative).execute(slot);
                   else if (local_x >= 135) id(controls_positive).execute(slot);
@@ -301,18 +301,18 @@ touchscreen:
                   id(controls_positive).execute(slot);
                   action_detected = true;
                 }
-              } else if (!light_on && local_y >= 55 && local_y < 160) {
+              } else if (!light_on && local_y >= 55 && local_y < 180) {
                 ESP_LOGI("control", "Controls action: slot=2 light toggle");
                 id(control_light_toggle).execute(slot);
                 action_detected = true;
               }
-            } else if (local_y >= 55 && local_y < 205) {
+            } else if (local_y >= 55 && local_y < 180) {
               ESP_LOGI("control", "Controls action: slot=2 light toggle");
               id(control_light_toggle).execute(slot);
               action_detected = true;
             }
           } else if (std::string(slot_type) == "switch" &&
-                     local_x >= 56 && local_x < 148 && local_y >= 42 && local_y < 134) {
+                     local_x >= 56 && local_x < 148 && local_y >= 42 && local_y < 144) {
             std::string state = id(controls_id).state_at(slot);
             for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
             if (state == "on" || state == "off") {
@@ -322,7 +322,7 @@ touchscreen:
               ESP_LOGI("control", "Controls action: switch unavailable slot=%d state=%s", slot, state.c_str());
             }
             action_detected = true;
-          } else if (std::string(slot_type) == "cover" && local_y >= 160 && local_y < 205) {
+          } else if (std::string(slot_type) == "cover" && local_y >= 180 && local_y < 225) {
             if (local_x < 70) {
               id(controls_positive).execute(slot);
               action_detected = true;
@@ -333,7 +333,7 @@ touchscreen:
               id(controls_negative).execute(slot);
               action_detected = true;
             }
-          } else if (std::string(slot_type) == "vacuum" && local_y >= 160 && local_y < 205) {
+          } else if (std::string(slot_type) == "vacuum" && local_y >= 180 && local_y < 225) {
             if (local_x < 70) {
               id(controls_positive).execute(slot);
               action_detected = true;
@@ -344,7 +344,7 @@ touchscreen:
               id(control_vacuum_return_to_base).execute(slot);
               action_detected = true;
             }
-          } else if (std::string(slot_type) == "media_player" && local_y >= 160 && local_y < 205) {
+          } else if (std::string(slot_type) == "media_player" && local_y >= 180 && local_y < 225) {
             if (local_x < 70) {
               id(control_media_player_previous).execute(slot);
               action_detected = true;

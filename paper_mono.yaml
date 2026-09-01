@@ -24,14 +24,21 @@ substitutions:
 
 controls:
   controls:
-    - entity_id: climate.ac_salon_inteligente
-      name: Clima
     - entity_id: light.sofa
       name: Luces
+    - entity_id: light.pergola
+      name: Pergola
+    - entity_id: climate.ac_salon_inteligente
+      name: Clima
     - entity_id: cover.persiana_jardin
+      name: Persiana
     - entity_id: vacuum.lefant_m210_pro_omni_3
       name: Robot
-
+    - entity_id: light.luces_jardin
+      name: Luces jardín
+    - entity_id: media_player.arylic_lp100
+    - entity_id: switch.enchufe_lavabo_ninas
+      name: Enchufe Lavabo Niñas
 packages:
   runtime_config: !include packages/runtime_config.yaml
   core: !include packages/core.yaml

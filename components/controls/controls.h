@@ -63,13 +63,18 @@ class Controls : public Component {
                    sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
                    sensor::Sensor *current_position, sensor::Sensor *volume,
                    text_sensor::TextSensor *media_title, sensor::Sensor *supported_features,
-                   text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name);
+                   text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name,
+                   const char *block_name, uint8_t block_index, uint16_t block_first_page);
   void setup() override;
   void loop() override;
   void dump_config() override;
   void log_unsupported(uint8_t index, const char *entity_id);
 
   size_t count() const { return count_; }
+  int page_count() const;
+  int control_index_at_page_slot(int page, int visual_slot) const;
+  const char *block_name_at_page(int page) const;
+  int first_page_for_block(int block_index) const;
   const char *type_at(size_t index) const;
   const char *entity_id_at(size_t index) const;
   std::string resolved_name_at(size_t index) const;
@@ -146,6 +151,8 @@ class Controls : public Component {
   std::vector<float> chromatic_saturation_{};
   std::vector<float> optimistic_volume_{};
   std::vector<bool> optimistic_volume_valid_{};
+  std::vector<std::string> block_names_{};
+  std::vector<uint8_t> block_indices_{};
   size_t count_{0};
   int active_slot_{-1};
   papermono_epaper::PaperMonoEpaper *display_{nullptr};

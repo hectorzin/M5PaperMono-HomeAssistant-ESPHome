@@ -9,6 +9,8 @@ from esphome.const import CONF_ENTITY_ID, CONF_ID, CONF_NAME
 DEPENDENCIES = ["api", "sensor", "text_sensor"]
 
 CONF_CONTROLS = "controls"
+CONF_BLOCKS = "blocks"
+CONF_ENTITIES = "entities"
 # Visual grid shows 6 cards per page; no hard cap on configured entities.
 MAX_CONTROLS = 48
 SUPPORTED_DOMAINS = {"climate", "light", "cover", "vacuum", "switch", "media_player"}
@@ -35,10 +37,36 @@ CONTROL_SCHEMA = cv.Schema({
     cv.Required(CONF_ENTITY_ID): cv.entity_id,
     cv.Optional(CONF_NAME, default=""): cv.string,
 })
+BLOCK_SCHEMA = cv.Schema({
+    cv.Required(CONF_NAME): cv.string,
+    cv.Required(CONF_ENTITIES): cv.All(cv.ensure_list(CONTROL_SCHEMA), cv.Length(max=MAX_CONTROLS)),
+    cv.Optional("nfc_id"): cv.string,
+})
+
+def _validate_blocks(blocks):
+    blocks = cv.All(cv.ensure_list(BLOCK_SCHEMA), cv.Length(min=1))(blocks)
+    flattened = []
+    for block in blocks:
+        flattened.extend(block[CONF_ENTITIES])
+    declared = _declare_control_sensor_ids(flattened)
+    offset = 0
+    result = []
+    for block in blocks:
+        size = len(block[CONF_ENTITIES])
+        copy = dict(block)
+        copy[CONF_ENTITIES] = declared[offset:offset + size]
+        result.append(copy)
+        offset += size
+    return result
 
 
 def _declare_control_sensor_ids(controls):
-    controls = cv.All(cv.ensure_list(CONTROL_SCHEMA), cv.Length(max=MAX_CONTROLS))(controls)
+    # Code generation can revisit a component configuration; declared sensor
+    # IDs must remain idempotent across those passes.
+    raw_controls = controls if isinstance(controls, list) else [controls]
+    if raw_controls and CONF_STATE_SENSOR_ID in raw_controls[0]:
+        return raw_controls
+    controls = cv.All(cv.ensure_list(CONTROL_SCHEMA), cv.Length(max=MAX_CONTROLS))(raw_controls)
     declared = []
     for index, control in enumerate(controls):
         entity = control[CONF_ENTITY_ID]
@@ -98,10 +126,25 @@ def _declare_control_sensor_ids(controls):
         declared.append(entry)
     return declared
 
+def _flatten_controls(config):
+    if CONF_BLOCKS in config:
+        flattened = []
+        block_names = []
+        block_indices = []
+        for block_index, block in enumerate(config[CONF_BLOCKS]):
+            for control in block[CONF_ENTITIES]:
+                flattened.append(control)
+                block_names.append(block[CONF_NAME])
+                block_indices.append(block_index)
+        return _declare_control_sensor_ids(flattened), block_names, block_indices
+    flattened = _declare_control_sensor_ids(config[CONF_CONTROLS])
+    return flattened, ["Control"] * len(flattened), [0] * len(flattened)
+
 
 CONFIG_SCHEMA = cv.Schema({
     cv.GenerateID(): cv.declare_id(Controls),
-    cv.Required(CONF_CONTROLS): _declare_control_sensor_ids,
+    cv.Exclusive(CONF_CONTROLS, "layout"): _declare_control_sensor_ids,
+    cv.Exclusive(CONF_BLOCKS, "layout"): _validate_blocks,
     cv.Required("display_id"): cv.use_id(papermono_display.PaperMonoEpaper),
     cv.Required("controls_view"): cv.use_id(globals.GlobalsComponent),
     cv.Required("ha_connection_state"): cv.use_id(globals.GlobalsComponent),
@@ -142,7 +185,9 @@ async def to_code(config):
     cg.add(var.set_controls_view(await cg.get_variable(config["controls_view"])))
     cg.add(var.set_ha_connection_state(await cg.get_variable(config["ha_connection_state"])))
 
-    for index, control in enumerate(config[CONF_CONTROLS]):
+    controls, block_names, block_indices = _flatten_controls(config)
+    block_page_starts = {}
+    for index, control in enumerate(controls):
         entity = control[CONF_ENTITY_ID]
         domain = entity.split(".", 1)[0]
         supported = domain in SUPPORTED_DOMAINS
@@ -183,7 +228,10 @@ async def to_code(config):
         else:
             print(f"[controls]   no domain-specific attributes for {domain}")
 
+        block_index = block_indices[index]
+        block_page_starts.setdefault(block_index, index // 6)
         cg.add(var.add_control(index, entity, control[CONF_NAME], domain, state, friendly, modes,
                                hs_color, color_temperature, min_color_temperature, max_color_temperature,
                                brightness, current, minimum, maximum, target, current_position,
-                               volume, media_title, supported_features, media_artist, media_album_name))
+                               volume, media_title, supported_features, media_artist, media_album_name,
+                               block_names[index], block_index, block_page_starts[block_index]))

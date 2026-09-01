@@ -621,7 +621,7 @@ script:
           const size_t total = id(controls_id).count();
           if (total <= 6) return;
           const int old_page = id(controls_page);
-          const int total_pages = static_cast<int>((total + 5) / 6);
+          const int total_pages = id(controls_id).page_count();
           id(controls_page) = (old_page + 1) % total_pages;
           ESP_LOGI("control", "Controls page: %d/%d -> %d/%d",
                    old_page + 1, total_pages, id(controls_page) + 1, total_pages);
@@ -637,7 +637,7 @@ script:
           const size_t total = id(controls_id).count();
           if (total <= 6) return;
           const int old_page = id(controls_page);
-          const int total_pages = static_cast<int>((total + 5) / 6);
+          const int total_pages = id(controls_id).page_count();
           id(controls_page) = (old_page - 1 + total_pages) % total_pages;
           ESP_LOGI("control", "Controls page: %d/%d -> %d/%d",
                    old_page + 1, total_pages, id(controls_page) + 1, total_pages);

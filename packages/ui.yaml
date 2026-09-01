@@ -621,10 +621,12 @@ display:
         // Controls use a reusable 2x3 geometry: six 214x236 cards with
         // 8px gutters. Each card keeps its complete interaction in-cell.
         const size_t controls_total = id(controls_id).count();
-        const int controls_total_pages = controls_total == 0 ? 1 : static_cast<int>((controls_total + 5) / 6);
+        const int controls_total_pages = id(controls_id).page_count();
         const int controls_current_page = id(controls_page);
         it.printf(28, 23, id(font_device_battery), Color::BLACK, TextAlign::CENTER_LEFT, "%d/%d",
                   controls_current_page + 1, controls_total_pages);
+        it.printf(240, 23, id(font_label), Color::BLACK, TextAlign::CENTER, "%s",
+                  id(controls_id).block_name_at_page(controls_current_page));
         draw_device_battery(380, 13);
         const int card_x[2] = {22, 244};
         const int card_y[3] = {64, 308, 552};
@@ -908,7 +910,9 @@ display:
           media_button(x + 148, id(control_media_next_icon), id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK));
         };
         for (size_t visual_slot = 0; visual_slot < 6; visual_slot++) {
-          const size_t index = static_cast<size_t>(controls_current_page) * 6 + visual_slot;
+          const int mapped_index = id(controls_id).control_index_at_page_slot(controls_current_page, static_cast<int>(visual_slot));
+          if (mapped_index < 0) continue;
+          const size_t index = static_cast<size_t>(mapped_index);
           const int x = card_x[visual_slot % 2];
           const int y = card_y[visual_slot / 2];
           if (index >= controls_total) {

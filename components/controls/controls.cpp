@@ -21,7 +21,8 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
                            sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
                            sensor::Sensor *current_position, sensor::Sensor *volume,
                            text_sensor::TextSensor *media_title, sensor::Sensor *supported_features,
-                           text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name) {
+                           text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name,
+                           const char *block_name, uint8_t block_index, uint16_t) {
   const size_t slot = static_cast<size_t>(index);
   if (slot >= entries_.size()) {
     entries_.resize(slot + 1);
@@ -35,11 +36,15 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
     chromatic_saturation_.resize(slot + 1);
     optimistic_volume_.resize(slot + 1);
     optimistic_volume_valid_.resize(slot + 1);
+    block_names_.resize(slot + 1);
+    block_indices_.resize(slot + 1);
   }
   entries_[slot] = {entity_id, name, domain, state, friendly_name, modes, hs_color,
                     color_temperature, min_color_temperature, max_color_temperature, brightness,
                     current_temperature, min_temperature, max_temperature, target_temperature,
                     current_position, volume, media_title, supported_features, media_artist, media_album_name};
+  block_names_[slot] = block_name != nullptr ? block_name : "Control";
+  block_indices_[slot] = block_index;
   count_ = std::max(count_, slot + 1);
 }
 
@@ -148,6 +153,52 @@ void Controls::log_unsupported(uint8_t index, const char *entity_id) {
 const ControlEntry *Controls::entry_(size_t index) const { return index < count_ ? &entries_[index] : nullptr; }
 const char *Controls::type_at(size_t index) const { auto *e = entry_(index); return e != nullptr ? e->domain.c_str() : "none"; }
 const char *Controls::entity_id_at(size_t index) const { auto *e = entry_(index); return e != nullptr ? e->entity_id.c_str() : ""; }
+const char *Controls::block_name_at_page(int page) const {
+  const int index = control_index_at_page_slot(page, 0);
+  if (index < 0) return "Control";
+  return block_names_[static_cast<size_t>(index)].c_str();
+}
+int Controls::page_count() const {
+  if (count_ == 0) return 1;
+  int pages = 0;
+  size_t start = 0;
+  while (start < count_) {
+    size_t end = start + 1;
+    while (end < count_ && block_indices_[end] == block_indices_[start]) end++;
+    pages += static_cast<int>((end - start + 5) / 6);
+    start = end;
+  }
+  return pages;
+}
+int Controls::control_index_at_page_slot(int page, int visual_slot) const {
+  if (page < 0 || visual_slot < 0 || visual_slot >= 6) return -1;
+  int physical_page = 0;
+  size_t start = 0;
+  while (start < count_) {
+    size_t end = start + 1;
+    while (end < count_ && block_indices_[end] == block_indices_[start]) end++;
+    const int block_pages = static_cast<int>((end - start + 5) / 6);
+    if (page < physical_page + block_pages) {
+      const size_t index = start + static_cast<size_t>(page - physical_page) * 6 + visual_slot;
+      return index < end ? static_cast<int>(index) : -1;
+    }
+    physical_page += block_pages;
+    start = end;
+  }
+  return -1;
+}
+int Controls::first_page_for_block(int block_index) const {
+  int page = 0;
+  size_t start = 0;
+  while (start < count_) {
+    size_t end = start + 1;
+    while (end < count_ && block_indices_[end] == block_indices_[start]) end++;
+    if (block_indices_[start] == block_index) return page;
+    page += static_cast<int>((end - start + 5) / 6);
+    start = end;
+  }
+  return -1;
+}
 bool Controls::valid_text_(const text_sensor::TextSensor *value) {
   return value != nullptr && value->has_state() && !value->state.empty() && value->state != "unknown" && value->state != "unavailable";
 }

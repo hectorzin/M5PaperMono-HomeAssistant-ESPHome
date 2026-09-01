@@ -88,7 +88,7 @@ binary_sensor:
                   then:
                     - lambda: |-
                         const size_t total = id(controls_id).count();
-                        const int total_pages = total == 0 ? 1 : static_cast<int>((total + 5) / 6);
+                        const int total_pages = id(controls_id).page_count();
                         id(papermono_activity_hub).request_controls_entry(0);
                         ESP_LOGI("control", "GPIO2 Controls entry: page=1/%d", total_pages);
 
@@ -118,7 +118,7 @@ binary_sensor:
                   then:
                     - lambda: |-
                         const size_t total = id(controls_id).count();
-                        const int total_pages = total == 0 ? 1 : static_cast<int>((total + 5) / 6);
+                        const int total_pages = id(controls_id).page_count();
                         const int last_page = total_pages - 1;
                         id(papermono_activity_hub).request_controls_entry(last_page);
                         ESP_LOGI("control", "GPIO3 Controls entry: page=%d/%d", total_pages, total_pages);
@@ -193,7 +193,7 @@ touchscreen:
             std::vector<std::string> modes;
             std::string token;
             const int popup_slot = id(selected_control) >= 0 ? id(selected_control) : 0;
-            const int popup_visual = popup_slot - id(controls_page) * 6;
+            const int popup_visual = popup_slot;
             if (popup_visual < 0 || popup_visual >= 6)
               return;
             const std::string raw = id(controls_id).modes_valid(popup_slot) ? id(controls_id).modes_at(popup_slot) : "";
@@ -239,7 +239,7 @@ touchscreen:
           const int local_x = x - CARD_X[column];
           const int local_y = y - CARD_Y[row];
           const int visual_slot = row * 2 + column;
-          const int slot = id(controls_page) * 6 + visual_slot;
+          const int slot = id(controls_id).control_index_at_page_slot(id(controls_page), visual_slot);
           if (slot < 0 || static_cast<size_t>(slot) >= id(controls_id).count())
             return;
           if (id(active_color_preview_slot) >= 0 && id(active_color_preview_slot) != slot) {

@@ -128,6 +128,17 @@ globals:
     restore_value: no
     initial_value: 'false'
 script:
+  - id: interaction_feedback
+    mode: restart
+    then:
+      - output.set_level:
+          id: interaction_feedback_output
+          level: 8%
+      - delay: 25ms
+      - output.set_level:
+          id: interaction_feedback_output
+          level: 0%
+
   - id: controls_refresh_partial
     mode: restart
     then:
@@ -143,6 +154,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot) && (id(controls_id).state_at(slot) == "on" || id(controls_id).state_at(slot) == "off");'
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           ESP_LOGI("control", "HA action: light.toggle entity=%s", id(controls_id).entity_id_at(slot));
       - homeassistant.action:
@@ -153,6 +169,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "off";'
+          then:
+            - script.execute: interaction_feedback
       - homeassistant.action:
           action: light.turn_on
           data:
@@ -161,6 +182,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+          then:
+            - script.execute: interaction_feedback
       - homeassistant.action:
           action: light.turn_off
           data:
@@ -169,6 +195,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot) && (id(controls_id).state_at(slot) == "on" || id(controls_id).state_at(slot) == "off");'
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           ESP_LOGI("control", "HA action: switch.toggle entity=%s", id(controls_id).entity_id_at(slot));
       - homeassistant.action:
@@ -179,6 +210,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "off";'
+          then:
+            - script.execute: interaction_feedback
       - homeassistant.action:
           action: switch.turn_on
           data:
@@ -187,6 +223,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+          then:
+            - script.execute: interaction_feedback
       - homeassistant.action:
           action: switch.turn_off
           data:
@@ -197,8 +238,9 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK);'
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK);'
           then:
+            - script.execute: interaction_feedback
             - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=previous", slot);'
             - homeassistant.action:
                 action: media_player.media_previous_track
@@ -211,8 +253,9 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK);'
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK);'
           then:
+            - script.execute: interaction_feedback
             - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=next", slot);'
             - homeassistant.action:
                 action: media_player.media_next_track
@@ -225,8 +268,9 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).state_at(slot) == "playing" && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PAUSE);'
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "playing" && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PAUSE);'
           then:
+            - script.execute: interaction_feedback
             - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=pause", slot);'
             - homeassistant.action:
                 action: media_player.media_pause
@@ -238,9 +282,10 @@ script:
                 condition:
                   lambda: |-
                     const std::string state = id(controls_id).state_at(slot);
-                    return (state == "paused" || state == "idle" || state == "standby" || state == "off") &&
+                    return id(controls_id).state_valid(slot) && (state == "paused" || state == "idle" || state == "standby" || state == "off") &&
                            id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PLAY);
                 then:
+                  - script.execute: interaction_feedback
                   - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=play", slot);'
                   - homeassistant.action:
                       action: media_player.media_play
@@ -254,8 +299,16 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_VOLUME_SET) && id(controls_id).media_volume_valid(slot);'
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_VOLUME_SET) && id(controls_id).media_volume_valid(slot);'
           then:
+            - if:
+                condition:
+                  lambda: |-
+                    const float old_value = id(controls_id).media_volume_at(slot);
+                    const float new_value = std::max(0.0f, std::min(1.0f, old_value + direction * 0.05f));
+                    return new_value != old_value;
+                then:
+                  - script.execute: interaction_feedback
             - lambda: |-
                 const float old_value = id(controls_id).media_volume_at(slot);
                 const float new_value = std::max(0.0f, std::min(1.0f, old_value + direction * 0.05f));
@@ -289,6 +342,13 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: |-
+              const float value = id(controls_id).number_valid(slot, "brightness") ? id(controls_id).number_at(slot, "brightness") : 128.0f;
+              return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on" && std::max(0.0f, value - 32.0f) != value;
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           const float value = id(controls_id).number_valid(slot, "brightness")
               ? id(controls_id).number_at(slot, "brightness") : 128.0f;
@@ -306,6 +366,13 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: |-
+              const float value = id(controls_id).number_valid(slot, "brightness") ? id(controls_id).number_at(slot, "brightness") : 128.0f;
+              return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on" && std::min(255.0f, value + 32.0f) != value;
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           const float value = id(controls_id).number_valid(slot, "brightness")
               ? id(controls_id).number_at(slot, "brightness") : 128.0f;
@@ -403,6 +470,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           static const char *names[] = {"RED", "YELLOW", "WHITE", "GREEN", "CYAN", "BLUE", "MAGENTA"};
           static const float hues[] = {0.0f, 60.0f, 0.0f, 120.0f, 180.0f, 240.0f, 300.0f};
@@ -426,6 +498,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";'
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           static const char *names[] = {"RED", "YELLOW", "WHITE", "GREEN", "CYAN", "BLUE", "MAGENTA"};
           static const float hues[] = {0.0f, 60.0f, 0.0f, 120.0f, 180.0f, 240.0f, 300.0f};
@@ -645,6 +722,15 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: |-
+              if (!id(controls_id).state_valid(slot) || !id(controls_id).number_valid(slot, "target_temperature")) return false;
+              const float value = id(controls_id).number_at(slot, "target_temperature");
+              const float minimum = id(controls_id).number_valid(slot, "min_temperature") ? id(controls_id).number_at(slot, "min_temperature") : -INFINITY;
+              return value > minimum;
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           const float value = id(controls_id).number_valid(slot, "target_temperature")
               ? id(controls_id).number_at(slot, "target_temperature") - 0.5f : 20.0f;
@@ -661,6 +747,15 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: |-
+              if (!id(controls_id).state_valid(slot) || !id(controls_id).number_valid(slot, "target_temperature")) return false;
+              const float value = id(controls_id).number_at(slot, "target_temperature");
+              const float maximum = id(controls_id).number_valid(slot, "max_temperature") ? id(controls_id).number_at(slot, "max_temperature") : INFINITY;
+              return value < maximum;
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           const float value = id(controls_id).number_valid(slot, "target_temperature")
               ? id(controls_id).number_at(slot, "target_temperature") + 0.5f : 21.0f;
@@ -678,6 +773,11 @@ script:
       slot: int
       mode: string
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot);'
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           ESP_LOGI("control", "Controls action: climate set_hvac_mode=%s", mode.c_str());
       - homeassistant.action:
@@ -690,6 +790,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot);'
+          then:
+            - script.execute: interaction_feedback
       - if:
           condition:
             lambda: |-
@@ -726,6 +831,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot);'
+          then:
+            - script.execute: interaction_feedback
       - homeassistant.action:
           action: cover.open_cover
           data:
@@ -734,6 +844,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot);'
+          then:
+            - script.execute: interaction_feedback
       - homeassistant.action:
           action: cover.stop_cover
           data:
@@ -742,6 +857,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot);'
+          then:
+            - script.execute: interaction_feedback
       - homeassistant.action:
           action: cover.close_cover
           data:
@@ -750,6 +870,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot);'
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           ESP_LOGI("control", "HA action: vacuum.start entity=%s", id(controls_id).entity_id_at(slot));
       - homeassistant.action:
@@ -760,6 +885,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot);'
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           ESP_LOGI("control", "HA action: vacuum.pause entity=%s", id(controls_id).entity_id_at(slot));
       - homeassistant.action:
@@ -770,6 +900,11 @@ script:
     parameters:
       slot: int
     then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_valid(slot);'
+          then:
+            - script.execute: interaction_feedback
       - lambda: |-
           ESP_LOGI("control", "HA action: vacuum.return_to_base entity=%s", id(controls_id).entity_id_at(slot));
       - homeassistant.action:

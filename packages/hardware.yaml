@@ -24,6 +24,15 @@ m5ioe1:
   id: m5ioe1_hub
   address: 0x4F
 
+# GPIO42 is the PaperMono's passive buzzer.  Keep the sound short and quiet;
+# interaction_feedback is the only code path that drives this output.
+output:
+  - platform: ledc
+    id: interaction_feedback_output
+    pin: GPIO42
+    frequency: 4000Hz
+    zero_means_zero: true
+
 papermono_rtc:
   id: papermono_rtc_hub
   i2c_id: bus_main
@@ -71,6 +80,9 @@ binary_sensor:
             condition:
               lambda: 'return id(controls_view) && id(controls_id).active_slot() >= 0;'
             then:
+              - lambda: |-
+                  if (std::string(id(controls_id).type_at(id(controls_id).active_slot())) == "media_player")
+                    ESP_LOGI("control", "Physical button: UP slot=%d type=media_player action=volume_up", id(controls_id).active_slot());
               - script.execute:
                   id: controls_positive
                   slot: !lambda 'return id(controls_id).active_slot();'
@@ -95,6 +107,9 @@ binary_sensor:
             condition:
               lambda: 'return id(controls_view) && id(controls_id).active_slot() >= 0;'
             then:
+              - lambda: |-
+                  if (std::string(id(controls_id).type_at(id(controls_id).active_slot())) == "media_player")
+                    ESP_LOGI("control", "Physical button: DOWN slot=%d type=media_player action=volume_down", id(controls_id).active_slot());
               - script.execute:
                   id: controls_negative
                   slot: !lambda 'return id(controls_id).active_slot();'
@@ -175,8 +190,9 @@ touchscreen:
                   local_y >= 165 - (mode_index + 1) * row_h && local_y < 165 - mode_index * row_h - 2) {
                 std::string current = id(controls_id).state_valid(popup_slot) ? id(controls_id).state_at(popup_slot) : "off";
                 for (char &c : current) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                if (modes[mode_index] != current)
+                if (modes[mode_index] != current) {
                   id(control_climate_set_hvac_mode).execute(popup_slot, modes[mode_index]);
+                }
               }
             }
             id(controls_climate_mode_selector_open) = false;
@@ -303,6 +319,17 @@ touchscreen:
               action_detected = true;
             } else {
               id(control_vacuum_return_to_base).execute(slot);
+              action_detected = true;
+            }
+          } else if (std::string(slot_type) == "media_player" && local_y >= 160 && local_y < 205) {
+            if (local_x < 70) {
+              id(control_media_player_previous).execute(slot);
+              action_detected = true;
+            } else if (local_x < 135) {
+              id(control_media_player_play_pause).execute(slot);
+              action_detected = true;
+            } else {
+              id(control_media_player_next).execute(slot);
               action_detected = true;
             }
           }

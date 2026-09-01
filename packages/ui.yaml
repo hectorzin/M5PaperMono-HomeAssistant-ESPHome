@@ -193,7 +193,7 @@ image:
     transparency: alpha_channel
   - file: mdi:volume-medium
     id: control_media_volume_icon
-    resize: 22x22
+    resize: 26x26
     type: grayscale
     transparency: alpha_channel
   - file: mdi:skip-previous
@@ -630,7 +630,6 @@ display:
         it.printf(29, 20, id(font_label), Color::BLACK, "%d/%d",
                   controls_current_page + 1, controls_total_pages);
         draw_device_battery(380, 13);
-        it.line(28, 60, w - 28, 60, Color::BLACK);
         const int card_x[2] = {28, 247};
         const int card_y[3] = {70, 310, 550};
         const int card_w = 205;
@@ -723,6 +722,23 @@ display:
         auto button_icon = [&](int x, int y, esphome::image::Image *icon) {
           it.rectangle(x, y, 55, 40, Color::BLACK);
           it.image(x + 28, y + 20, icon, ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+        };
+        auto text_width = [&](const std::string &value, auto *font) {
+          int bounds_x = 0, bounds_y = 0, width = 0, height = 0;
+          it.get_text_bounds(0, 0, value.c_str(), font, TextAlign::TOP_LEFT,
+                             &bounds_x, &bounds_y, &width, &height);
+          return width;
+        };
+        auto truncate_to_width = [&](const std::string &value, auto *font, int max_width) {
+          if (text_width(value, font) <= max_width)
+            return value;
+          const std::string ellipsis = "...";
+          if (text_width(ellipsis, font) > max_width)
+            return ellipsis;
+          std::string result = value;
+          while (!result.empty() && text_width(result + ellipsis, font) > max_width)
+            result.pop_back();
+          return result + ellipsis;
         };
         auto draw_empty = [&](int x, int y) {
           card(x, y);
@@ -850,26 +866,26 @@ display:
           it.printf(x + 102, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", name.c_str());
           std::string state = id(controls_id).state_valid(index) ? id(controls_id).state_at(index) : "unknown";
           for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-          auto media_text = [&](const char *field, size_t limit) {
-            std::string value = id(controls_id).text_at(index, field);
-            if (value.size() > limit) value = value.substr(0, limit > 3 ? limit - 3 : limit) + (limit > 3 ? "..." : "");
-            return value;
+          auto media_text = [&](const char *field, auto *font) {
+            return truncate_to_width(id(controls_id).text_at(index, field), font, card_w - 18);
           };
-          std::string title = media_text("media_title", 24);
-          const std::string artist = media_text("media_artist", 26);
-          const std::string album = media_text("media_album_name", 24);
+          std::string title = media_text("media_title", id(font_connecting_state));
+          const std::string artist = media_text("media_artist", id(font_control_name));
           if (title.empty()) title = "Ready to Play";
-          // The Dial puts the track title and artist below its cover art. With
-          // no album art on the PaperMono, retain that hierarchy in the open
-          // center of the rectangular card.
-          it.printf(x + 102, y + 72, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", title.c_str());
-          if (!artist.empty()) it.printf(x + 102, y + 98, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", artist.c_str());
-          if (!album.empty()) it.printf(x + 102, y + 118, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", album.c_str());
+          it.printf(x + 102, y + 48, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", title.c_str());
+          if (!artist.empty()) it.printf(x + 102, y + 74, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", artist.c_str());
           if (id(controls_id).media_volume_valid(index)) {
             const float volume = std::max(0.0f, std::min(1.0f, id(controls_id).media_volume_at(index)));
-            const int volume_y = album.empty() ? (artist.empty() ? 98 : 118) : 138;
-            it.image(x + 78, y + volume_y + 1, id(control_media_volume_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
-            it.printf(x + 125, y + volume_y, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", volume * 100.0f);
+            char volume_text[8];
+            snprintf(volume_text, sizeof(volume_text), "%.0f%%", volume * 100.0f);
+            button(x + 10, y + 132, "-");
+            it.image(x + 102, y + 118, id(control_media_volume_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+            int percentage_bounds_x = 0, percentage_bounds_y = 0, percentage_width = 0, percentage_height = 0;
+            it.get_text_bounds(x + 102, 0, volume_text, id(font_subtitle), TextAlign::TOP_CENTER,
+                               &percentage_bounds_x, &percentage_bounds_y, &percentage_width, &percentage_height);
+            const int percentage_y = y + 152 - (percentage_bounds_y + percentage_height / 2);
+            it.printf(x + 102, percentage_y, id(font_subtitle), Color::BLACK, TextAlign::TOP_CENTER, "%s", volume_text);
+            button(x + 140, y + 132, "+");
           }
           auto media_button = [&](int bx, esphome::image::Image *icon, bool enabled) {
             it.rectangle(bx, y + 185, 55, 40, Color::BLACK);

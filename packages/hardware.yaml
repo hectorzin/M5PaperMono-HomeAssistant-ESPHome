@@ -344,6 +344,14 @@ touchscreen:
               id(control_vacuum_return_to_base).execute(slot);
               action_detected = true;
             }
+          } else if (std::string(slot_type) == "media_player" && local_y >= 130 && local_y < 175) {
+            if (local_x < 70) {
+              id(control_media_player_volume_down).execute(slot);
+              action_detected = true;
+            } else if (local_x >= 135) {
+              id(control_media_player_volume_up).execute(slot);
+              action_detected = true;
+            }
           } else if (std::string(slot_type) == "media_player" && local_y >= 180 && local_y < 225) {
             if (local_x < 70) {
               id(control_media_player_previous).execute(slot);

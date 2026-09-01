@@ -268,10 +268,11 @@ touchscreen:
           } else if (std::string(slot_type) == "light") {
             if (id(controls_id).light_supports_brightness(slot)) {
               const bool light_on = id(controls_id).state_valid(slot) && id(controls_id).state_at(slot) == "on";
-              const bool percentage_tap = local_x >= 60 && local_x < 155 && local_y >= 82 && local_y < 118;
+              const bool percentage_tap = local_x >= 40 && local_x < 174 && local_y >= 55 && local_y < 155;
               if (light_on && percentage_tap) {
                 const auto previous_mode = id(controls_id).light_edit_mode_at(slot);
                 if (id(controls_id).cycle_light_edit_mode(slot)) {
+                  id(interaction_feedback).execute();
                   const auto next_mode = id(controls_id).light_edit_mode_at(slot);
                   if (previous_mode != esphome::controls::LightEditMode::RGB &&
                       next_mode == esphome::controls::LightEditMode::RGB)

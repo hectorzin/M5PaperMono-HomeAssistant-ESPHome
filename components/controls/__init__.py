@@ -81,6 +81,9 @@ def _declare_control_sensor_ids(controls):
             entry["hs_color_sensor_id"] = cv.declare_id(ha_text_sensor.HomeassistantTextSensor)(
                 f"{prefix}_hs_color"
             )
+            entry["color_temperature_sensor_id"] = cv.declare_id(ha_sensor.HomeassistantSensor)(f"{prefix}_color_temperature")
+            entry["min_color_temperature_sensor_id"] = cv.declare_id(ha_sensor.HomeassistantSensor)(f"{prefix}_min_color_temperature")
+            entry["max_color_temperature_sensor_id"] = cv.declare_id(ha_sensor.HomeassistantSensor)(f"{prefix}_max_color_temperature")
         elif domain == "cover":
             entry[CONF_CURRENT_POSITION_SENSOR_ID] = cv.declare_id(ha_sensor.HomeassistantSensor)(
                 f"{prefix}_current_position"
@@ -148,7 +151,7 @@ async def to_code(config):
 
         state = await _make_text(control[CONF_STATE_SENSOR_ID], entity)
         friendly = await _make_text(control[CONF_FRIENDLY_NAME_SENSOR_ID], entity, "friendly_name")
-        modes = brightness = hs_color = current = minimum = maximum = target = current_position = cg.nullptr
+        modes = brightness = hs_color = color_temperature = min_color_temperature = max_color_temperature = current = minimum = maximum = target = current_position = cg.nullptr
         volume = media_title = supported_features = media_artist = media_album_name = cg.nullptr
 
         print(f"[controls]   state\n[controls]   friendly_name")
@@ -163,6 +166,9 @@ async def to_code(config):
             modes = await _make_text(control[CONF_MODES_SENSOR_ID], entity, "supported_color_modes")
             brightness = await _make_number(control[CONF_BRIGHTNESS_SENSOR_ID], entity, "brightness")
             hs_color = await _make_text(control["hs_color_sensor_id"], entity, "hs_color")
+            color_temperature = await _make_number(control["color_temperature_sensor_id"], entity, "color_temp_kelvin")
+            min_color_temperature = await _make_number(control["min_color_temperature_sensor_id"], entity, "min_color_temp_kelvin")
+            max_color_temperature = await _make_number(control["max_color_temperature_sensor_id"], entity, "max_color_temp_kelvin")
             print("[controls]   supported_color_modes\n[controls]   brightness\n[controls]   hs_color")
         elif domain == "cover":
             current_position = await _make_number(control[CONF_CURRENT_POSITION_SENSOR_ID], entity, "current_position")
@@ -178,6 +184,6 @@ async def to_code(config):
             print(f"[controls]   no domain-specific attributes for {domain}")
 
         cg.add(var.add_control(index, entity, control[CONF_NAME], domain, state, friendly, modes,
-                               hs_color,
+                               hs_color, color_temperature, min_color_temperature, max_color_temperature,
                                brightness, current, minimum, maximum, target, current_position,
                                volume, media_title, supported_features, media_artist, media_album_name))

@@ -14,6 +14,8 @@ static const char *const TAG = "controls";
 void Controls::add_control(uint8_t index, const char *entity_id, const char *name, const char *domain,
                            text_sensor::TextSensor *state, text_sensor::TextSensor *friendly_name,
                            text_sensor::TextSensor *modes, text_sensor::TextSensor *hs_color,
+                           sensor::Sensor *color_temperature, sensor::Sensor *min_color_temperature,
+                           sensor::Sensor *max_color_temperature,
                            sensor::Sensor *brightness,
                            sensor::Sensor *current_temperature, sensor::Sensor *min_temperature,
                            sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
@@ -34,7 +36,8 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
     optimistic_volume_.resize(slot + 1);
     optimistic_volume_valid_.resize(slot + 1);
   }
-  entries_[slot] = {entity_id, name, domain, state, friendly_name, modes, hs_color, brightness,
+  entries_[slot] = {entity_id, name, domain, state, friendly_name, modes, hs_color,
+                    color_temperature, min_color_temperature, max_color_temperature, brightness,
                     current_temperature, min_temperature, max_temperature, target_temperature,
                     current_position, volume, media_title, supported_features, media_artist, media_album_name};
   count_ = std::max(count_, slot + 1);
@@ -90,6 +93,9 @@ void Controls::setup() {
         }
         refresh_();
       });
+    if (entry.color_temperature != nullptr) entry.color_temperature->add_on_state_callback([this](float) { refresh_(); });
+    if (entry.min_color_temperature != nullptr) entry.min_color_temperature->add_on_state_callback([this](float) { refresh_(); });
+    if (entry.max_color_temperature != nullptr) entry.max_color_temperature->add_on_state_callback([this](float) { refresh_(); });
     if (entry.brightness != nullptr)
       entry.brightness->add_on_state_callback([this](float) { refresh_(); });
     if (entry.current_temperature != nullptr)
@@ -190,7 +196,7 @@ bool Controls::light_supports_color_temp(size_t index) const {
     if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
       token += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     } else if (!token.empty()) {
-      if (token == "color_temp") return true;
+      if (token == "color_temp" || token == "color_temp_kelvin") return true;
       token.clear();
     }
   }
@@ -236,10 +242,16 @@ bool Controls::light_supports_brightness(size_t index) const {
 bool Controls::color_valid(size_t index) const { return index < count_ && color_valid_[index]; }
 float Controls::hue_at(size_t index) const { return index < count_ ? hue_[index] : 0.0f; }
 float Controls::saturation_at(size_t index) const { return index < count_ ? saturation_[index] : 0.0f; }
+float Controls::color_temperature_at(size_t index) const { auto *e = entry_(index); return e && e->color_temperature && e->color_temperature->has_state() ? e->color_temperature->state : 0.0f; }
+float Controls::min_color_temperature_at(size_t index) const { auto *e = entry_(index); return e && e->min_color_temperature && e->min_color_temperature->has_state() ? e->min_color_temperature->state : 0.0f; }
+float Controls::max_color_temperature_at(size_t index) const { auto *e = entry_(index); return e && e->max_color_temperature && e->max_color_temperature->has_state() ? e->max_color_temperature->state : 0.0f; }
 bool Controls::number_valid(size_t index, const char *field) const {
   auto *e = entry_(index); if (e == nullptr) return false;
   const sensor::Sensor *s = nullptr;
   if (!strcmp(field, "brightness")) s = e->brightness;
+  else if (!strcmp(field, "color_temperature")) s = e->color_temperature;
+  else if (!strcmp(field, "min_color_temperature")) s = e->min_color_temperature;
+  else if (!strcmp(field, "max_color_temperature")) s = e->max_color_temperature;
   else if (!strcmp(field, "current_temperature")) s = e->current_temperature;
   else if (!strcmp(field, "min_temperature")) s = e->min_temperature;
   else if (!strcmp(field, "max_temperature")) s = e->max_temperature;
@@ -253,6 +265,9 @@ float Controls::number_at(size_t index, const char *field) const {
   auto *e = entry_(index); if (e == nullptr) return 0.0f;
   const sensor::Sensor *s = nullptr;
   if (!strcmp(field, "brightness")) s = e->brightness;
+  else if (!strcmp(field, "color_temperature")) s = e->color_temperature;
+  else if (!strcmp(field, "min_color_temperature")) s = e->min_color_temperature;
+  else if (!strcmp(field, "max_color_temperature")) s = e->max_color_temperature;
   else if (!strcmp(field, "current_temperature")) s = e->current_temperature;
   else if (!strcmp(field, "min_temperature")) s = e->min_temperature;
   else if (!strcmp(field, "max_temperature")) s = e->max_temperature;

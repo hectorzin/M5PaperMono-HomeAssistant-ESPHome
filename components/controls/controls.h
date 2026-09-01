@@ -32,6 +32,9 @@ struct ControlEntry {
   text_sensor::TextSensor *friendly_name{nullptr};
   text_sensor::TextSensor *modes{nullptr};
   text_sensor::TextSensor *hs_color{nullptr};
+  sensor::Sensor *color_temperature{nullptr};
+  sensor::Sensor *min_color_temperature{nullptr};
+  sensor::Sensor *max_color_temperature{nullptr};
   sensor::Sensor *brightness{nullptr};
   sensor::Sensor *current_temperature{nullptr};
   sensor::Sensor *min_temperature{nullptr};
@@ -53,6 +56,8 @@ class Controls : public Component {
   void add_control(uint8_t index, const char *entity_id, const char *name, const char *domain,
                    text_sensor::TextSensor *state, text_sensor::TextSensor *friendly_name,
                    text_sensor::TextSensor *modes, text_sensor::TextSensor *hs_color,
+                   sensor::Sensor *color_temperature, sensor::Sensor *min_color_temperature,
+                   sensor::Sensor *max_color_temperature,
                    sensor::Sensor *brightness,
                    sensor::Sensor *current_temperature, sensor::Sensor *min_temperature,
                    sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
@@ -85,6 +90,9 @@ class Controls : public Component {
   bool color_valid(size_t index) const;
   float hue_at(size_t index) const;
   float saturation_at(size_t index) const;
+  float color_temperature_at(size_t index) const;
+  float min_color_temperature_at(size_t index) const;
+  float max_color_temperature_at(size_t index) const;
   void set_color(size_t index, float hue, float saturation) {
     if (index >= count_) return;
     hue_[index] = hue;

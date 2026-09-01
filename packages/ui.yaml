@@ -794,8 +794,17 @@ display:
               const auto edit_mode = id(controls_id).light_edit_mode_at(index);
               if (edit_mode == esphome::controls::LightEditMode::RGB)
                 it.print(x + card_w / 2, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "RGB");
-              else if (edit_mode == esphome::controls::LightEditMode::COLOR_TEMP)
-                it.print(x + card_w / 2, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "K");
+              else if (edit_mode == esphome::controls::LightEditMode::COLOR_TEMP) {
+                const bool kelvin_valid = id(controls_id).number_valid(index, "color_temperature");
+                const float kelvin = kelvin_valid ? id(controls_id).number_at(index, "color_temperature") : 0.0f;
+                char kelvin_text[16];
+                if (kelvin_valid) snprintf(kelvin_text, sizeof(kelvin_text), "%.0f K", kelvin);
+                else snprintf(kelvin_text, sizeof(kelvin_text), "-- K");
+                int bounds_x = 0, bounds_y = 0, text_width_value = 0, text_height = 0;
+                it.get_text_bounds(0, 0, kelvin_text, id(font_subtitle), TextAlign::TOP_LEFT,
+                                   &bounds_x, &bounds_y, &text_width_value, &text_height);
+                it.print(x + card_w / 2, y + 89, id(font_subtitle), Color::BLACK, TextAlign::TOP_CENTER, kelvin_text);
+              }
               else if (brightness_valid)
                 it.printf(x + card_w / 2, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", brightness * 100.0f);
               button(x + 10, y + 185, "-"); button_icon(x + 79, y + 185, id(control_light_icon)); button(x + 148, y + 185, "+");

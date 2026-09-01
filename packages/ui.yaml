@@ -189,6 +189,31 @@ image:
     resize: 52x52
     type: grayscale
     transparency: alpha_channel
+  - file: mdi:volume-medium
+    id: control_media_volume_icon
+    resize: 22x22
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:skip-previous
+    id: control_media_previous_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:skip-next
+    id: control_media_next_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:play
+    id: control_media_play_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:pause
+    id: control_media_pause_icon
+    resize: 28x28
+    type: grayscale
+    transparency: alpha_channel
   - file: mdi:robot-vacuum
     id: control_vacuum_icon
     resize: 80x80
@@ -802,6 +827,45 @@ display:
           button_icon(x + 75, y + 165, id(control_vacuum_pause_icon));
           button_icon(x + 140, y + 165, id(control_vacuum_return_to_base_icon));
         };
+        auto draw_media_player = [&](size_t index, int x, int y) {
+          card(x, y);
+          const std::string name = id(controls_id).resolved_name_at(index);
+          it.printf(x + 102, y + 12, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", name.c_str());
+          std::string state = id(controls_id).state_valid(index) ? id(controls_id).state_at(index) : "unknown";
+          for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+          auto media_text = [&](const char *field, size_t limit) {
+            std::string value = id(controls_id).text_at(index, field);
+            if (value.size() > limit) value = value.substr(0, limit > 3 ? limit - 3 : limit) + (limit > 3 ? "..." : "");
+            return value;
+          };
+          std::string title = media_text("media_title", 24);
+          const std::string artist = media_text("media_artist", 26);
+          const std::string album = media_text("media_album_name", 24);
+          if (title.empty()) title = "Ready to Play";
+          // The Dial puts the track title and artist below its cover art. With
+          // no album art on the PaperMono, retain that hierarchy in the open
+          // center of the rectangular card.
+          it.printf(x + 102, y + 62, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", title.c_str());
+          if (!artist.empty()) it.printf(x + 102, y + 88, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", artist.c_str());
+          if (!album.empty()) it.printf(x + 102, y + 108, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%s", album.c_str());
+          if (id(controls_id).media_volume_valid(index)) {
+            const float volume = std::max(0.0f, std::min(1.0f, id(controls_id).media_volume_at(index)));
+            const int volume_y = album.empty() ? (artist.empty() ? 88 : 108) : 128;
+            it.image(x + 78, y + volume_y + 1, id(control_media_volume_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+            it.printf(x + 125, y + volume_y, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", volume * 100.0f);
+          }
+          auto media_button = [&](int bx, esphome::image::Image *icon, bool enabled) {
+            it.rectangle(bx, y + 165, 55, 40, Color::BLACK);
+            if (enabled) it.image(bx + 28, y + 185, icon, ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+          };
+          media_button(x + 10, id(control_media_previous_icon), id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK));
+          const bool playing = state == "playing";
+          const bool can_play = state == "paused" || state == "idle" || state == "standby" || state == "off";
+          media_button(x + 75, playing ? id(control_media_pause_icon) : id(control_media_play_icon),
+                       playing ? id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_PAUSE) :
+                                 (can_play && id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_PLAY)));
+          media_button(x + 140, id(control_media_next_icon), id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK));
+        };
         for (size_t index = 0; index < 6; index++) {
           const int x = card_x[index % 2];
           const int y = card_y[index / 2];
@@ -811,6 +875,7 @@ display:
           else if (type == "switch") draw_switch(index, x, y);
           else if (type == "cover") draw_cover(index, x, y);
           else if (type == "vacuum") draw_vacuum(index, x, y);
+          else if (type == "media_player") draw_media_player(index, x, y);
           else draw_empty(x, y);
         }
       }

@@ -191,6 +191,100 @@ script:
           action: switch.turn_off
           data:
             entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+  - id: control_media_player_previous
+    parameters:
+      slot: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK);'
+          then:
+            - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=previous", slot);'
+            - homeassistant.action:
+                action: media_player.media_previous_track
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - script.execute: controls_refresh_partial
+  - id: control_media_player_next
+    parameters:
+      slot: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK);'
+          then:
+            - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=next", slot);'
+            - homeassistant.action:
+                action: media_player.media_next_track
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - script.execute: controls_refresh_partial
+  - id: control_media_player_play_pause
+    parameters:
+      slot: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).state_at(slot) == "playing" && id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PAUSE);'
+          then:
+            - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=pause", slot);'
+            - homeassistant.action:
+                action: media_player.media_pause
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+            - script.execute: controls_refresh_partial
+          else:
+            - if:
+                condition:
+                  lambda: |-
+                    const std::string state = id(controls_id).state_at(slot);
+                    return (state == "paused" || state == "idle" || state == "standby" || state == "off") &&
+                           id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_PLAY);
+                then:
+                  - lambda: 'ESP_LOGI("control", "Media player action: slot=%d action=play", slot);'
+                  - homeassistant.action:
+                      action: media_player.media_play
+                      data:
+                        entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                  - script.execute: controls_refresh_partial
+  - id: control_media_player_volume
+    parameters:
+      slot: int
+      direction: int
+    then:
+      - if:
+          condition:
+            lambda: 'return id(controls_id).media_feature_supported(slot, esphome::controls::MEDIA_PLAYER_FEATURE_VOLUME_SET) && id(controls_id).media_volume_valid(slot);'
+          then:
+            - lambda: |-
+                const float old_value = id(controls_id).media_volume_at(slot);
+                const float new_value = std::max(0.0f, std::min(1.0f, old_value + direction * 0.05f));
+                id(controls_id).set_media_volume_optimistic(slot, new_value);
+                ESP_LOGI("control", "Media player volume optimistic: slot=%d old=%.2f new=%.2f", slot, old_value, new_value);
+            - script.execute: controls_refresh_partial
+            - homeassistant.action:
+                action: media_player.volume_set
+                data:
+                  entity_id: !lambda 'return id(controls_id).entity_id_at(slot);'
+                data_template:
+                  volume_level: !lambda |-
+                    return id(controls_id).media_volume_at(slot);
+  - id: control_media_player_volume_up
+    parameters:
+      slot: int
+    then:
+      - script.execute:
+          id: control_media_player_volume
+          slot: !lambda 'return slot;'
+          direction: 1
+  - id: control_media_player_volume_down
+    parameters:
+      slot: int
+    then:
+      - script.execute:
+          id: control_media_player_volume
+          slot: !lambda 'return slot;'
+          direction: -1
   - id: control_light_brightness_down
     parameters:
       slot: int
@@ -373,6 +467,13 @@ script:
           ESP_LOGI("control", "Physical/touch positive: slot=%d type=%s action=%s", slot, type.c_str(), action.c_str());
       - if:
           condition:
+            lambda: 'return std::string(id(controls_id).type_at(slot)) == "media_player";'
+          then:
+            - script.execute:
+                id: control_media_player_volume_up
+                slot: !lambda 'return slot;'
+      - if:
+          condition:
             lambda: 'return std::string(id(controls_id).type_at(slot)) == "light" && id(controls_id).color_edit_mode_at(slot);'
           then:
             - script.execute:
@@ -462,6 +563,13 @@ script:
           }
           else if (type == "switch") action = "off";
           ESP_LOGI("control", "Physical/touch negative: slot=%d type=%s action=%s", slot, type.c_str(), action.c_str());
+      - if:
+          condition:
+            lambda: 'return std::string(id(controls_id).type_at(slot)) == "media_player";'
+          then:
+            - script.execute:
+                id: control_media_player_volume_down
+                slot: !lambda 'return slot;'
       - if:
           condition:
             lambda: 'return std::string(id(controls_id).type_at(slot)) == "light" && id(controls_id).color_edit_mode_at(slot);'

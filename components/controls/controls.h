@@ -11,6 +11,12 @@
 
 namespace esphome::controls {
 
+constexpr uint32_t MEDIA_PLAYER_FEATURE_PAUSE = 1;
+constexpr uint32_t MEDIA_PLAYER_FEATURE_VOLUME_SET = 4;
+constexpr uint32_t MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK = 16;
+constexpr uint32_t MEDIA_PLAYER_FEATURE_NEXT_TRACK = 32;
+constexpr uint32_t MEDIA_PLAYER_FEATURE_PLAY = 16384;
+
 struct ControlEntry {
   std::string entity_id;
   std::string configured_name;
@@ -25,6 +31,11 @@ struct ControlEntry {
   sensor::Sensor *max_temperature{nullptr};
   sensor::Sensor *target_temperature{nullptr};
   sensor::Sensor *current_position{nullptr};
+  sensor::Sensor *volume{nullptr};
+  text_sensor::TextSensor *media_title{nullptr};
+  sensor::Sensor *supported_features{nullptr};
+  text_sensor::TextSensor *media_artist{nullptr};
+  text_sensor::TextSensor *media_album_name{nullptr};
 };
 
 class Controls : public Component {
@@ -38,7 +49,9 @@ class Controls : public Component {
                    sensor::Sensor *brightness,
                    sensor::Sensor *current_temperature, sensor::Sensor *min_temperature,
                    sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
-                   sensor::Sensor *current_position);
+                   sensor::Sensor *current_position, sensor::Sensor *volume,
+                   text_sensor::TextSensor *media_title, sensor::Sensor *supported_features,
+                   text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name);
   void setup() override;
   void loop() override;
   void dump_config() override;
@@ -89,12 +102,18 @@ class Controls : public Component {
   void set_active_slot(int slot) { active_slot_ = (slot >= 0 && static_cast<size_t>(slot) < count_) ? slot : -1; }
   bool number_valid(size_t index, const char *field) const;
   float number_at(size_t index, const char *field) const;
+  std::string text_at(size_t index, const char *field) const;
+  bool media_feature_supported(size_t index, uint32_t feature) const;
+  bool media_volume_valid(size_t index) const;
+  float media_volume_at(size_t index) const;
+  void set_media_volume_optimistic(size_t index, float value);
   std::string last_active_mode_at(size_t index) const;
 
  protected:
   static bool valid_text_(const text_sensor::TextSensor *value);
   const ControlEntry *entry_(size_t index) const;
   void refresh_();
+  void media_volume_confirmed_(size_t index, float value);
   std::array<ControlEntry, 6> entries_{};
   std::array<std::string, 6> last_active_modes_{};
   std::array<bool, 6> color_edit_mode_{};
@@ -104,6 +123,8 @@ class Controls : public Component {
   std::array<bool, 6> color_preview_started_{};
   std::array<int, 6> color_step_{};
   std::array<float, 6> chromatic_saturation_{};
+  std::array<float, 6> optimistic_volume_{};
+  std::array<bool, 6> optimistic_volume_valid_{};
   size_t count_{0};
   int active_slot_{-1};
   papermono_epaper::PaperMonoEpaper *display_{nullptr};

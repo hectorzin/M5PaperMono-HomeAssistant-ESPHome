@@ -10,7 +10,7 @@ DEPENDENCIES = ["api", "sensor", "text_sensor"]
 
 CONF_CONTROLS = "controls"
 MAX_CONTROLS = 6
-SUPPORTED_DOMAINS = {"climate", "light", "cover", "vacuum", "switch"}
+SUPPORTED_DOMAINS = {"climate", "light", "cover", "vacuum", "switch", "media_player"}
 
 CONF_STATE_SENSOR_ID = "state_sensor_id"
 CONF_FRIENDLY_NAME_SENSOR_ID = "friendly_name_sensor_id"
@@ -21,6 +21,11 @@ CONF_MIN_TEMPERATURE_SENSOR_ID = "min_temperature_sensor_id"
 CONF_MAX_TEMPERATURE_SENSOR_ID = "max_temperature_sensor_id"
 CONF_BRIGHTNESS_SENSOR_ID = "brightness_sensor_id"
 CONF_CURRENT_POSITION_SENSOR_ID = "current_position_sensor_id"
+CONF_VOLUME_SENSOR_ID = "volume_sensor_id"
+CONF_MEDIA_TITLE_SENSOR_ID = "media_title_sensor_id"
+CONF_SUPPORTED_FEATURES_SENSOR_ID = "supported_features_sensor_id"
+CONF_MEDIA_ARTIST_SENSOR_ID = "media_artist_sensor_id"
+CONF_MEDIA_ALBUM_NAME_SENSOR_ID = "media_album_name_sensor_id"
 
 controls_ns = cg.esphome_ns.namespace("controls")
 Controls = controls_ns.class_("Controls", cg.Component)
@@ -79,6 +84,12 @@ def _declare_control_sensor_ids(controls):
             entry[CONF_CURRENT_POSITION_SENSOR_ID] = cv.declare_id(ha_sensor.HomeassistantSensor)(
                 f"{prefix}_current_position"
             )
+        elif domain == "media_player":
+            entry[CONF_VOLUME_SENSOR_ID] = cv.declare_id(ha_sensor.HomeassistantSensor)(f"{prefix}_volume_level")
+            entry[CONF_MEDIA_TITLE_SENSOR_ID] = cv.declare_id(ha_text_sensor.HomeassistantTextSensor)(f"{prefix}_media_title")
+            entry[CONF_SUPPORTED_FEATURES_SENSOR_ID] = cv.declare_id(ha_sensor.HomeassistantSensor)(f"{prefix}_supported_features")
+            entry[CONF_MEDIA_ARTIST_SENSOR_ID] = cv.declare_id(ha_text_sensor.HomeassistantTextSensor)(f"{prefix}_media_artist")
+            entry[CONF_MEDIA_ALBUM_NAME_SENSOR_ID] = cv.declare_id(ha_text_sensor.HomeassistantTextSensor)(f"{prefix}_media_album_name")
 
         declared.append(entry)
     return declared
@@ -137,6 +148,7 @@ async def to_code(config):
         state = await _make_text(control[CONF_STATE_SENSOR_ID], entity)
         friendly = await _make_text(control[CONF_FRIENDLY_NAME_SENSOR_ID], entity, "friendly_name")
         modes = brightness = hs_color = current = minimum = maximum = target = current_position = cg.nullptr
+        volume = media_title = supported_features = media_artist = media_album_name = cg.nullptr
 
         print(f"[controls]   state\n[controls]   friendly_name")
         if domain == "climate":
@@ -154,9 +166,17 @@ async def to_code(config):
         elif domain == "cover":
             current_position = await _make_number(control[CONF_CURRENT_POSITION_SENSOR_ID], entity, "current_position")
             print("[controls]   current_position")
+        elif domain == "media_player":
+            volume = await _make_number(control[CONF_VOLUME_SENSOR_ID], entity, "volume_level")
+            media_title = await _make_text(control[CONF_MEDIA_TITLE_SENSOR_ID], entity, "media_title")
+            supported_features = await _make_number(control[CONF_SUPPORTED_FEATURES_SENSOR_ID], entity, "supported_features")
+            media_artist = await _make_text(control[CONF_MEDIA_ARTIST_SENSOR_ID], entity, "media_artist")
+            media_album_name = await _make_text(control[CONF_MEDIA_ALBUM_NAME_SENSOR_ID], entity, "media_album_name")
+            print("[controls]   volume_level\n[controls]   media_title\n[controls]   supported_features\n[controls]   media_artist\n[controls]   media_album_name")
         else:
             print(f"[controls]   no domain-specific attributes for {domain}")
 
         cg.add(var.add_control(index, entity, control[CONF_NAME], domain, state, friendly, modes,
                                hs_color,
-                               brightness, current, minimum, maximum, target, current_position))
+                               brightness, current, minimum, maximum, target, current_position,
+                               volume, media_title, supported_features, media_artist, media_album_name))

@@ -17,11 +17,13 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
                            sensor::Sensor *brightness,
                            sensor::Sensor *current_temperature, sensor::Sensor *min_temperature,
                            sensor::Sensor *max_temperature, sensor::Sensor *target_temperature,
-                           sensor::Sensor *current_position) {
+                           sensor::Sensor *current_position, sensor::Sensor *volume,
+                           text_sensor::TextSensor *media_title, sensor::Sensor *supported_features,
+                           text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name) {
   if (index >= entries_.size()) return;
   entries_[index] = {entity_id, name, domain, state, friendly_name, modes, hs_color, brightness,
                      current_temperature, min_temperature, max_temperature, target_temperature,
-                     current_position};
+                     current_position, volume, media_title, supported_features, media_artist, media_album_name};
   count_ = std::max(count_, static_cast<size_t>(index + 1));
 }
 
@@ -87,6 +89,16 @@ void Controls::setup() {
       entry.target_temperature->add_on_state_callback([this](float) { refresh_(); });
     if (entry.current_position != nullptr)
       entry.current_position->add_on_state_callback([this](float) { refresh_(); });
+    if (entry.volume != nullptr)
+      entry.volume->add_on_state_callback([this, i](float value) { media_volume_confirmed_(i, value); });
+    if (entry.media_title != nullptr)
+      entry.media_title->add_on_state_callback([this](const std::string &) { refresh_(); });
+    if (entry.supported_features != nullptr)
+      entry.supported_features->add_on_state_callback([this](float) { refresh_(); });
+    if (entry.media_artist != nullptr)
+      entry.media_artist->add_on_state_callback([this](const std::string &) { refresh_(); });
+    if (entry.media_album_name != nullptr)
+      entry.media_album_name->add_on_state_callback([this](const std::string &) { refresh_(); });
   }
 }
 
@@ -169,6 +181,8 @@ bool Controls::number_valid(size_t index, const char *field) const {
   else if (!strcmp(field, "max_temperature")) s = e->max_temperature;
   else if (!strcmp(field, "target_temperature")) s = e->target_temperature;
   else if (!strcmp(field, "current_position")) s = e->current_position;
+  else if (!strcmp(field, "volume_level")) s = e->volume;
+  else if (!strcmp(field, "supported_features")) s = e->supported_features;
   return s != nullptr && s->has_state() && !std::isnan(s->state);
 }
 float Controls::number_at(size_t index, const char *field) const {
@@ -180,7 +194,49 @@ float Controls::number_at(size_t index, const char *field) const {
   else if (!strcmp(field, "max_temperature")) s = e->max_temperature;
   else if (!strcmp(field, "target_temperature")) s = e->target_temperature;
   else if (!strcmp(field, "current_position")) s = e->current_position;
+  else if (!strcmp(field, "volume_level")) s = e->volume;
+  else if (!strcmp(field, "supported_features")) s = e->supported_features;
   return s != nullptr ? s->state : 0.0f;
+}
+std::string Controls::text_at(size_t index, const char *field) const {
+  auto *e = entry_(index); if (e == nullptr) return {};
+  const auto *s = !strcmp(field, "media_title") ? e->media_title :
+                  !strcmp(field, "media_artist") ? e->media_artist :
+                  !strcmp(field, "media_album_name") ? e->media_album_name : nullptr;
+  return s != nullptr && s->has_state() ? s->state : std::string{};
+}
+bool Controls::media_feature_supported(size_t index, uint32_t feature) const {
+  if (!number_valid(index, "supported_features")) return false;
+  const float raw = number_at(index, "supported_features");
+  return raw >= 0.0f && (static_cast<uint32_t>(raw) & feature) != 0;
+}
+bool Controls::media_volume_valid(size_t index) const {
+  if (index >= count_) return false;
+  if (optimistic_volume_valid_[index]) return true;
+  return number_valid(index, "volume_level");
+}
+float Controls::media_volume_at(size_t index) const {
+  if (index >= count_) return 0.0f;
+  if (optimistic_volume_valid_[index]) return optimistic_volume_[index];
+  return number_at(index, "volume_level");
+}
+void Controls::set_media_volume_optimistic(size_t index, float value) {
+  if (index >= count_) return;
+  optimistic_volume_[index] = std::max(0.0f, std::min(1.0f, value));
+  optimistic_volume_valid_[index] = true;
+}
+void Controls::media_volume_confirmed_(size_t index, float value) {
+  if (index >= count_ || std::isnan(value)) return;
+  if (optimistic_volume_valid_[index]) {
+    if (std::fabs(value - optimistic_volume_[index]) <= 0.011f) {
+      optimistic_volume_valid_[index] = false;
+      ESP_LOGI(TAG, "Media player volume confirmed: slot=%u value=%.2f", static_cast<unsigned>(index), value);
+    } else {
+      refresh_();
+      return;
+    }
+  }
+  refresh_();
 }
 std::string Controls::resolved_name_at(size_t index) const {
   auto *e = entry_(index); if (e == nullptr) return {};

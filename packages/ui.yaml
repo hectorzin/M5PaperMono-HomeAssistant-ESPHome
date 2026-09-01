@@ -618,22 +618,18 @@ display:
           it.print(404, 100, id(font_label), Color::BLACK, "DEMO");
         }
       } else {
-        // Controls use a reusable 2x3 geometry: six 205x230 cards with
-        // 10px gutters. Each card keeps its complete interaction in-cell.
+        // Controls use a reusable 2x3 geometry: six 214x236 cards with
+        // 8px gutters. Each card keeps its complete interaction in-cell.
         const size_t controls_total = id(controls_id).count();
         const int controls_total_pages = controls_total == 0 ? 1 : static_cast<int>((controls_total + 5) / 6);
         const int controls_current_page = id(controls_page);
-        // Keep the page marker discreet while adding a one-pixel overprint
-        // for e-paper legibility; its size and position remain unchanged.
-        it.printf(28, 20, id(font_label), Color::BLACK, "%d/%d",
-                  controls_current_page + 1, controls_total_pages);
-        it.printf(29, 20, id(font_label), Color::BLACK, "%d/%d",
+        it.printf(28, 23, id(font_device_battery), Color::BLACK, TextAlign::CENTER_LEFT, "%d/%d",
                   controls_current_page + 1, controls_total_pages);
         draw_device_battery(380, 13);
-        const int card_x[2] = {28, 247};
-        const int card_y[3] = {70, 310, 550};
-        const int card_w = 205;
-        const int card_h = 230;
+        const int card_x[2] = {22, 244};
+        const int card_y[3] = {64, 308, 552};
+        const int card_w = 214;
+        const int card_h = 236;
         auto light_supports_brightness = [&](size_t index) {
           if (!id(controls_id).modes_valid(index))
             return false;
@@ -648,7 +644,7 @@ display:
           return false;
         };
         auto draw_arc = [&](int x, int y, float value, bool active) {
-          const int cx = x + 102, cy = y + 112, radius = 70, steps = 32;
+          const int cx = x + card_w / 2, cy = y + 112, radius = 70, steps = 32;
           const float start = 140.0f, end = 400.0f;
           const float clamped = value < 0.0f ? 0.0f : value > 1.0f ? 1.0f : value;
           auto px = [&](float degrees, int r) { return cx + static_cast<int>(r * std::cos(degrees * 0.0174532925f)); };
@@ -663,7 +659,7 @@ display:
           }
         };
         auto draw_percentage_arc = [&](int x, int y, float value, bool active) {
-          const int cx = x + 102, cy = y + 112, radius = 70, steps = 32;
+          const int cx = x + card_w / 2, cy = y + 112, radius = 70, steps = 32;
           const float start = 140.0f, end = 400.0f;
           const float clamped = value < 0.0f ? 0.0f : value > 1.0f ? 1.0f : value;
           auto px = [&](float degrees, int r) { return cx + static_cast<int>(r * std::cos(degrees * 0.0174532925f)); };
@@ -678,7 +674,7 @@ display:
           }
         };
         auto draw_arc_marker = [&](int x, int y, float value, bool double_notch) {
-          const int cx = x + 102, cy = y + 112, radius = 70;
+          const int cx = x + card_w / 2, cy = y + 112, radius = 70;
           const float fraction = value < 0.0f ? 0.0f : value > 1.0f ? 1.0f : value;
           const float angle = (140.0f + 260.0f * fraction) * 0.0174532925f;
           auto marker = [&](float offset) {
@@ -740,13 +736,10 @@ display:
             result.pop_back();
           return result + ellipsis;
         };
-        auto draw_empty = [&](int x, int y) {
-          card(x, y);
-        };
         auto draw_climate = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string climate_name = id(controls_id).resolved_name_at(index);
-          it.printf(x + 102, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", climate_name.c_str());
+          it.printf(x + card_w / 2, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", climate_name.c_str());
           std::string current_mode = id(controls_id).state_valid(index) ? id(controls_id).state_at(index) : "off";
           for (char &c : current_mode) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
           const bool target_valid = id(controls_id).number_valid(index, "target_temperature");
@@ -760,27 +753,27 @@ display:
           if (target_valid) draw_arc_marker(x, y, (target - climate_min) / range, false);
           if (current_valid) draw_arc_marker(x, y, (current - climate_min) / range, true);
           if (target_valid)
-            it.printf(x + 102, y + 72, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", target);
+            it.printf(x + card_w / 2, y + 72, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", target);
           else
-            it.print(x + 102, y + 72, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "--°");
+            it.print(x + card_w / 2, y + 72, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "--°");
           const int current_row_y = y + 137;
-          it.image(x + 74, current_row_y, id(control_thermometer_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          it.image(x + 79, current_row_y, id(control_thermometer_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
           if (current_valid)
-            it.printf(x + 112, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", current);
+            it.printf(x + 117, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%.1f°", current);
           else
-            it.print(x + 112, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "--°");
+            it.print(x + 117, current_row_y + 1, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "--°");
           button(x + 10, y + 185, "-");
-          button_icon(x + 75, y + 185, hvac_icon(current_mode));
-          button(x + 140, y + 185, "+");
+          button_icon(x + 79, y + 185, hvac_icon(current_mode));
+          button(x + 148, y + 185, "+");
           if (id(controls_climate_mode_selector_open) && static_cast<int>(index) == id(selected_control)) {
             const auto modes = split_hvac_modes(id(controls_id).modes_valid(index) ? id(controls_id).modes_at(index) : "");
             const int row_h = modes.size() <= 4 ? 40 : modes.size() <= 6 ? 30 : modes.size() <= 7 ? 25 : 20;
             for (size_t i = 0; i < modes.size(); i++) {
               const int cell_y = y + 185 - (static_cast<int>(i) + 1) * row_h;
               const bool selected = modes[i] == current_mode;
-              if (selected) it.filled_rectangle(x + 73, cell_y, 55, row_h - 2, Color::BLACK);
-              else { it.filled_rectangle(x + 73, cell_y, 55, row_h - 2, Color::WHITE); it.rectangle(x + 73, cell_y, 55, row_h - 2, Color::BLACK); }
-              it.image(x + 102, cell_y + row_h / 2, hvac_icon(modes[i]), ImageAlign::CENTER,
+              if (selected) it.filled_rectangle(x + 79, cell_y, 55, row_h - 2, Color::BLACK);
+              else { it.filled_rectangle(x + 79, cell_y, 55, row_h - 2, Color::WHITE); it.rectangle(x + 79, cell_y, 55, row_h - 2, Color::BLACK); }
+              it.image(x + 107, cell_y + row_h / 2, hvac_icon(modes[i]), ImageAlign::CENTER,
                        selected ? Color::WHITE : Color::BLACK, selected ? Color::BLACK : Color::WHITE);
             }
           }
@@ -788,7 +781,7 @@ display:
         auto draw_light = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string light_name = id(controls_id).resolved_name_at(index);
-          it.printf(x + 102, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", light_name.c_str());
+          it.printf(x + card_w / 2, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", light_name.c_str());
           const bool on = id(controls_id).state_valid(index) && id(controls_id).state_at(index) == "on";
           const bool dimmable = light_supports_brightness(index);
           if (dimmable) {
@@ -797,52 +790,52 @@ display:
             if (on) {
               draw_percentage_arc(x, y, brightness, brightness_valid);
               if (id(controls_id).color_edit_mode_at(index))
-                it.print(x + 102, y + 68, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "COLOR");
-              if (brightness_valid) it.printf(x + 102, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", brightness * 100.0f);
-              button(x + 10, y + 185, "-"); button_icon(x + 75, y + 185, id(control_light_icon)); button(x + 140, y + 185, "+");
+                it.print(x + card_w / 2, y + 68, id(font_label), Color::BLACK, TextAlign::TOP_CENTER, "COLOR");
+              if (brightness_valid) it.printf(x + card_w / 2, y + 89, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", brightness * 100.0f);
+              button(x + 10, y + 185, "-"); button_icon(x + 79, y + 185, id(control_light_icon)); button(x + 148, y + 185, "+");
             } else {
-            it.image(x + 102, y + 112, id(control_light_outline_large_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+            it.image(x + card_w / 2, y + 112, id(control_light_outline_large_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
             }
           } else {
-            it.image(x + 102, y + 112, on ? id(control_light_large_icon) : id(control_light_outline_large_icon),
+            it.image(x + card_w / 2, y + 112, on ? id(control_light_large_icon) : id(control_light_outline_large_icon),
                      ImageAlign::CENTER, Color::BLACK, Color::WHITE);
           }
         };
         auto draw_switch = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string switch_name = id(controls_id).resolved_name_at(index);
-          it.printf(x + 102, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", switch_name.c_str());
+          it.printf(x + card_w / 2, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", switch_name.c_str());
           std::string state = id(controls_id).state_at(index);
           for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
           const bool on = state == "on";
           const bool off = state == "off";
           const char *status = on ? "ON" : off ? "OFF" : "No disponible";
           if (on)
-            it.circle(x + 102, y + 98, 46, Color::BLACK);
-          it.image(x + 102, y + 98, id(control_switch_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
-          it.printf(x + 102, y + 150, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", status);
+            it.circle(x + card_w / 2, y + 98, 46, Color::BLACK);
+          it.image(x + card_w / 2, y + 98, id(control_switch_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+          it.printf(x + card_w / 2, y + 150, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", status);
         };
         auto draw_cover = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string cover_name = id(controls_id).resolved_name_at(index);
-          it.printf(x + 102, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", cover_name.c_str());
+          it.printf(x + card_w / 2, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", cover_name.c_str());
           const bool position_valid = id(controls_id).number_valid(index, "current_position") &&
                                       id(controls_id).number_at(index, "current_position") >= 0.0f &&
                                       id(controls_id).number_at(index, "current_position") <= 100.0f;
           const float position = position_valid ? id(controls_id).number_at(index, "current_position") : 0.0f;
           draw_percentage_arc(x, y, position / 100.0f, position_valid);
           if (position_valid)
-            it.printf(x + 102, y + 82, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", position);
+            it.printf(x + card_w / 2, y + 82, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "%.0f%%", position);
           else
-            it.print(x + 102, y + 82, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "--%");
+            it.print(x + card_w / 2, y + 82, id(font_title), Color::BLACK, TextAlign::TOP_CENTER, "--%");
           button_icon(x + 10, y + 185, id(control_cover_open_icon));
-          button_icon(x + 75, y + 185, id(control_cover_stop_icon));
-          button_icon(x + 140, y + 185, id(control_cover_close_icon));
+          button_icon(x + 79, y + 185, id(control_cover_stop_icon));
+          button_icon(x + 148, y + 185, id(control_cover_close_icon));
         };
         auto draw_vacuum = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string vacuum_name = id(controls_id).resolved_name_at(index);
-          it.printf(x + 102, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", vacuum_name.c_str());
+          it.printf(x + card_w / 2, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", vacuum_name.c_str());
           std::string state = id(controls_id).state_at(index);
           if (state.empty()) state = "unknown";
           for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -854,16 +847,16 @@ display:
           else if (state == "returning") status = "Volviendo";
           else if (state == "error") status = "Error";
           else if (state == "unavailable") status = "No disponible";
-          it.image(x + 102, y + 105, id(control_vacuum_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
-          it.printf(x + 102, y + 150, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", status);
+          it.image(x + card_w / 2, y + 105, id(control_vacuum_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+          it.printf(x + card_w / 2, y + 150, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", status);
           button_icon(x + 10, y + 185, id(control_vacuum_start_icon));
-          button_icon(x + 75, y + 185, id(control_vacuum_pause_icon));
-          button_icon(x + 140, y + 185, id(control_vacuum_return_to_base_icon));
+          button_icon(x + 79, y + 185, id(control_vacuum_pause_icon));
+          button_icon(x + 148, y + 185, id(control_vacuum_return_to_base_icon));
         };
         auto draw_media_player = [&](size_t index, int x, int y) {
           card(x, y);
           const std::string name = id(controls_id).resolved_name_at(index);
-          it.printf(x + 102, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", name.c_str());
+          it.printf(x + card_w / 2, y + 10, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", name.c_str());
           std::string state = id(controls_id).state_valid(index) ? id(controls_id).state_at(index) : "unknown";
           for (char &c : state) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
           auto media_text = [&](const char *field, auto *font) {
@@ -872,20 +865,20 @@ display:
           std::string title = media_text("media_title", id(font_connecting_state));
           const std::string artist = media_text("media_artist", id(font_control_name));
           if (title.empty()) title = "Ready to Play";
-          it.printf(x + 102, y + 48, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", title.c_str());
-          if (!artist.empty()) it.printf(x + 102, y + 74, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", artist.c_str());
+          it.printf(x + card_w / 2, y + 48, id(font_connecting_state), Color::BLACK, TextAlign::TOP_CENTER, "%s", title.c_str());
+          if (!artist.empty()) it.printf(x + card_w / 2, y + 74, id(font_control_name), Color::BLACK, TextAlign::TOP_CENTER, "%s", artist.c_str());
           if (id(controls_id).media_volume_valid(index)) {
             const float volume = std::max(0.0f, std::min(1.0f, id(controls_id).media_volume_at(index)));
             char volume_text[8];
             snprintf(volume_text, sizeof(volume_text), "%.0f%%", volume * 100.0f);
             button(x + 10, y + 132, "-");
-            it.image(x + 102, y + 118, id(control_media_volume_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
+            it.image(x + card_w / 2, y + 118, id(control_media_volume_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
             int percentage_bounds_x = 0, percentage_bounds_y = 0, percentage_width = 0, percentage_height = 0;
-            it.get_text_bounds(x + 102, 0, volume_text, id(font_subtitle), TextAlign::TOP_CENTER,
+            it.get_text_bounds(x + card_w / 2, 0, volume_text, id(font_subtitle), TextAlign::TOP_CENTER,
                                &percentage_bounds_x, &percentage_bounds_y, &percentage_width, &percentage_height);
             const int percentage_y = y + 152 - (percentage_bounds_y + percentage_height / 2);
-            it.printf(x + 102, percentage_y, id(font_subtitle), Color::BLACK, TextAlign::TOP_CENTER, "%s", volume_text);
-            button(x + 140, y + 132, "+");
+            it.printf(x + card_w / 2, percentage_y, id(font_subtitle), Color::BLACK, TextAlign::TOP_CENTER, "%s", volume_text);
+            button(x + 148, y + 132, "+");
           }
           auto media_button = [&](int bx, esphome::image::Image *icon, bool enabled) {
             it.rectangle(bx, y + 185, 55, 40, Color::BLACK);
@@ -894,17 +887,16 @@ display:
           media_button(x + 10, id(control_media_previous_icon), id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_PREVIOUS_TRACK));
           const bool playing = state == "playing";
           const bool can_play = state == "paused" || state == "idle" || state == "standby" || state == "off";
-          media_button(x + 75, playing ? id(control_media_pause_icon) : id(control_media_play_icon),
+          media_button(x + 79, playing ? id(control_media_pause_icon) : id(control_media_play_icon),
                        playing ? id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_PAUSE) :
                                  (can_play && id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_PLAY)));
-          media_button(x + 140, id(control_media_next_icon), id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK));
+          media_button(x + 148, id(control_media_next_icon), id(controls_id).media_feature_supported(index, esphome::controls::MEDIA_PLAYER_FEATURE_NEXT_TRACK));
         };
         for (size_t visual_slot = 0; visual_slot < 6; visual_slot++) {
           const size_t index = static_cast<size_t>(controls_current_page) * 6 + visual_slot;
           const int x = card_x[visual_slot % 2];
           const int y = card_y[visual_slot / 2];
           if (index >= controls_total) {
-            draw_empty(x, y);
             continue;
           }
           const std::string type = id(controls_id).type_at(index);
@@ -914,6 +906,5 @@ display:
           else if (type == "cover") draw_cover(index, x, y);
           else if (type == "vacuum") draw_vacuum(index, x, y);
           else if (type == "media_player") draw_media_player(index, x, y);
-          else draw_empty(x, y);
         }
       }

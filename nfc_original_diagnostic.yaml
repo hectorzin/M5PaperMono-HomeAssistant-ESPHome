@@ -1,0 +1,40 @@
+esphome:
+  name: nfc-original-diagnostic
+
+esp32:
+  board: esp32-s3-devkitc1-n16r8
+  framework:
+    type: esp-idf
+  flash_size: 16MB
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: INFO
+  # PaperMono uses the ESP32-S3 native USB Serial/JTAG interface. This keeps
+  # both `esphome upload` and `esphome logs` on the board's USB connector.
+  hardware_uart: USB_SERIAL_JTAG
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [m5ioe1, papermono_nfc, nfc_original_diagnostic]
+
+i2c:
+  id: bus_main
+  sda: GPIO47
+  scl: GPIO48
+  frequency: 100kHz
+
+m5ioe1:
+  id: m5ioe1_hub
+  address: 0x4F
+
+nfc_original_diagnostic:
+  id: nfc_diag
+  i2c_id: bus_main
+  address: 0x50
+  m5ioe1_id: m5ioe1_hub

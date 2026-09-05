@@ -212,9 +212,19 @@ void PaperMonoEpaper::setup() {
   this->spi_setup();
   this->disable_loop();
 
-  if (this->pmu_ != nullptr && this->pmu_->is_boot_from_pmic_shutdown()) {
-    this->arm_pmic_initial_full();
-  }
+  // A reboot/power loss invalidates the controller RAM and the panel's
+  // physical baseline, even if the ESP32 frame buffer is still available.
+  this->baseline_ready_ = false;
+  this->partial_count_ = 0;
+  this->pmic_initial_full_started_ = false;
+  this->pmic_mandatory_full_done_ = false;
+  // The controller is ready for the first software-driven FULL on a normal
+  // boot. PMIC wake recovery overrides this to false until its hardware reset
+  // sequence completes.
+  this->hw_ready_for_refresh_ = true;
+  this->arm_pmic_initial_full();
+  ESP_LOGI(TAG, "EPD recovery: power-loss/reset requires FULL baseline");
+
   ESP_LOGI(TAG, "EPD setup: initial_full_required=%s", this->pmic_initial_full_required_ ? "yes" : "no");
 }
 
@@ -516,11 +526,14 @@ void PaperMonoEpaper::loop() {
       if (now - this->busy_wait_start_ >= BUSY_TIMEOUT_MS) {
         ESP_LOGE(TAG, "BUSY timeout after %u ms in state %u", static_cast<unsigned>(BUSY_TIMEOUT_MS),
                  static_cast<unsigned>(this->state_));
-        if (this->pmic_recovery_attempted_) {
-          this->hw_recovery_failed_ = true;
-          this->hw_ready_for_refresh_ = false;
-          ESP_LOGE(TAG, "PMIC wake: EPD refresh failed; staying awake for diagnosis");
-        }
+        this->baseline_ready_ = false;
+        this->partial_count_ = 0;
+        this->pmic_initial_full_started_ = false;
+        this->pmic_mandatory_full_done_ = false;
+        this->hw_recovery_failed_ = true;
+        this->hw_ready_for_refresh_ = false;
+        this->recovery_pending_ = true;
+        ESP_LOGE(TAG, "EPD recovery: FULL failed/BUSY timeout, baseline invalid");
         this->send_deep_sleep_();
         this->finish_refresh_(false);
       }
@@ -683,6 +696,7 @@ void PaperMonoEpaper::finish_refresh_(bool success) {
     if (this->full_refresh_) {
       this->baseline_ready_ = true;
       this->partial_count_ = 0;
+      ESP_LOGI(TAG, "EPD recovery: FULL completed successfully");
       if (this->pmic_initial_full_started_) {
         this->pmic_initial_full_started_ = false;
         this->pmic_initial_full_required_ = false;

@@ -10,6 +10,9 @@
 
 #include "esphome/core/component.h"
 #include "esphome/components/output/float_output.h"
+#include "esphome/components/script/script.h"
+#include "esphome/components/switch/switch.h"
+#include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/globals/globals_component.h"
 
 namespace esphome::globals {
@@ -124,6 +127,11 @@ class PaperMonoActivityComponent : public Component {
   void set_light_sleep_wake_recovery(globals::GlobalsComponent<bool> *recovery) {
     this->light_sleep_wake_recovery_ = recovery;
   }
+  void set_status_led_sleep_pending(globals::GlobalsComponent<bool> *pending) {
+    this->status_led_sleep_pending_ = pending;
+  }
+  void set_status_led_preview_slot(globals::GlobalsComponent<int> *slot) { this->status_led_preview_slot_ = slot; }
+  void set_status_led_blue_switch(switch_::Switch *blue) { this->status_led_blue_switch_ = blue; }
   void set_quiet_hours_sleep_display(globals::GlobalsComponent<bool> *value) {
     this->quiet_hours_sleep_display_ = value;
   }
@@ -131,6 +139,9 @@ class PaperMonoActivityComponent : public Component {
     this->quiet_hours_user_override_ = value;
   }
   void set_battery_display_level(globals::GlobalsComponent<float> *value) { this->battery_display_level_ = value; }
+  void set_external_power(binary_sensor::BinarySensor *value) { this->external_power_ = value; }
+  void set_periodic_alert_pulse(script::Script<> *pulse) { this->periodic_alert_pulse_ = pulse; }
+  void set_low_battery_threshold(globals::GlobalsComponent<float> *value) { this->low_battery_threshold_ = value; }
   void set_frontlight_default_brightness(globals::RestoringGlobalsComponent<int> *value) {
     this->frontlight_default_brightness_ = value;
   }
@@ -195,6 +206,7 @@ class PaperMonoActivityComponent : public Component {
   void run_screensaver_periodic_tick_(bool quiet_sleep_display);
   void request_light_sleep_(PowerTransitionSource source);
   void request_quiet_hours_shutdown_(PowerTransitionSource source);
+  bool sleep_timeout_expired_() const;
   bool can_enter_light_sleep_() const;
   bool can_begin_shutdown_() const;
   bool is_network_api_ready_() const;
@@ -266,9 +278,17 @@ class PaperMonoActivityComponent : public Component {
   sensor::Sensor *ha_indoor_humidity_{nullptr};
   globals::GlobalsComponent<bool> *wifi_transition_pending_{nullptr};
   globals::GlobalsComponent<bool> *light_sleep_wake_recovery_{nullptr};
+  globals::GlobalsComponent<bool> *status_led_sleep_pending_{nullptr};
+  globals::GlobalsComponent<int> *status_led_preview_slot_{nullptr};
+  switch_::Switch *status_led_blue_switch_{nullptr};
   globals::GlobalsComponent<bool> *quiet_hours_sleep_display_{nullptr};
   globals::GlobalsComponent<bool> *quiet_hours_user_override_{nullptr};
   globals::GlobalsComponent<float> *battery_display_level_{nullptr};
+  binary_sensor::BinarySensor *external_power_{nullptr};
+  script::Script<> *periodic_alert_pulse_{nullptr};
+  uint32_t periodic_alert_pulse_until_ms_{0};
+  bool periodic_alert_pulse_triggered_{false};
+  globals::GlobalsComponent<float> *low_battery_threshold_{nullptr};
   time::RealTimeClock *time_{nullptr};
   light::LightState *frontlight_light_{nullptr};
   PaperMonoFrontlightOutput *frontlight_output_{nullptr};

@@ -101,14 +101,21 @@ void PaperMonoActivityComponent::setup() {
   this->activity_active_ = false;
   this->pickup_cleanup_pending_ = false;
   this->light_sleep_pending_ = false;
+  if (this->status_led_sleep_pending_ != nullptr) {
+    this->status_led_sleep_pending_->value() = false;
+  }
   this->shutdown_phase_ = ShutdownPhase::NONE;
   this->periodic_wake_phase_ = PeriodicWakePhase::NONE;
-  this->last_activity_ms_ = 0;
+  // Start the inactivity clock at boot as well.  A device that has received
+  // no user input must still reach the configured sleep timeout.
+  this->last_activity_ms_ = millis();
   this->sleep_eligible_activity_ms_ = 0;
   this->shutdown_eligible_activity_ms_ = 0;
   this->periodic_wake_activity_ms_ = 0;
   this->periodic_wake_settle_start_ms_ = 0;
   this->periodic_wake_started_ms_ = 0;
+  this->periodic_alert_pulse_until_ms_ = 0;
+  this->periodic_alert_pulse_triggered_ = false;
   this->last_periodic_bucket_ = UINT32_MAX;
   this->last_gpio_block_log_ms_ = 0;
   this->periodic_wake_recovery_timeout_logged_ = false;
@@ -158,7 +165,17 @@ void PaperMonoActivityComponent::loop() {
   if (this->periodic_wake_phase_ != PeriodicWakePhase::NONE) {
     this->process_periodic_wake_recovery_();
   } else if (this->pmic_ha_final_full_pending_ && this->display_ != nullptr &&
-             this->display_->is_pmic_mandatory_full_done()) {
+             this->display_->is_pmic_mandatory_full_pending()) {
+    this->begin_pmic_ha_final_full_recovery_();
+  } else if (!this->pmic_ha_final_full_pending_ && this->display_ != nullptr &&
+             this->display_->is_pmic_initial_full_required() &&
+             !this->display_->is_pmic_initial_full_started() &&
+             this->display_->is_hw_ready_for_refresh() &&
+             !this->display_->is_pmic_recovery_failed() && this->is_network_api_ready_()) {
+    // Normal boot after a power loss does not enter the PMIC wake path, but it
+    // still needs the same mandatory FULL once the network/API is available.
+    this->pmic_ha_final_full_pending_ = true;
+    ESP_LOGI(TAG, "Home Assistant/time ready");
     this->begin_pmic_ha_final_full_recovery_();
   } else if (this->light_sleep_wake_recovery_ != nullptr && this->light_sleep_wake_recovery_->value() &&
              this->is_network_api_ready_() && !this->pmic_ha_final_full_pending_) {
@@ -181,20 +198,15 @@ void PaperMonoActivityComponent::loop() {
     this->enter_controls();
   }
 
-  // Sleep Timeout is the only trigger for an initial power transition while
-  // awake. Refresh Interval only re-arms light sleep after a periodic tick.
+  // Sleep timeout is evaluated before any periodic/internal work. Once the
+  // request is made, the pending flag prevents normal work from re-arming it.
   if (!this->light_sleep_pending_ && this->shutdown_phase_ == ShutdownPhase::NONE &&
-      this->last_activity_ms_ != 0 && this->periodic_wake_phase_ == PeriodicWakePhase::NONE) {
-    const uint32_t now = millis();
-    const uint32_t inactive_ms = now - this->last_activity_ms_;
-    const uint32_t configured_sleep_timeout_ms = this->sleep_timeout_ms_();
-    if (inactive_ms >= configured_sleep_timeout_ms) {
-      if (!this->sleep_timeout_logged_) {
-        ESP_LOGI(TAG, "Sleep timeout reached after %u s inactivity", configured_sleep_timeout_ms / 1000U);
-        this->sleep_timeout_logged_ = true;
-      }
-      this->request_light_sleep_(PowerTransitionSource::SLEEP_TIMEOUT);
+      this->periodic_wake_phase_ == PeriodicWakePhase::NONE && this->sleep_timeout_expired_()) {
+    if (!this->sleep_timeout_logged_) {
+      ESP_LOGI(TAG, "Sleep timeout reached after %u s inactivity", this->sleep_timeout_ms_() / 1000U);
+      this->sleep_timeout_logged_ = true;
     }
+    this->request_light_sleep_(PowerTransitionSource::SLEEP_TIMEOUT);
   }
 
   if (this->light_sleep_pending_ && this->in_controls_view_() &&
@@ -239,6 +251,9 @@ void PaperMonoActivityComponent::clear_wake_recovery_flag_() {
 
 void PaperMonoActivityComponent::cancel_light_sleep_() {
   this->light_sleep_pending_ = false;
+  if (this->status_led_sleep_pending_ != nullptr) {
+    this->status_led_sleep_pending_->value() = false;
+  }
   this->sleep_timeout_light_sleep_cycle_ = false;
   this->periodic_wake_phase_ = PeriodicWakePhase::NONE;
   this->periodic_wake_settle_start_ms_ = 0;
@@ -1008,6 +1023,16 @@ void PaperMonoActivityComponent::process_shutdown_pending_() {
 }
 
 void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_sleep_display) {
+  // A periodic tick can never turn an expired awake period back into a normal
+  // refresh. Only the already-running physical display operation may delay
+  // the actual light-sleep entry.
+  if (this->light_sleep_pending_) {
+    return;
+  }
+  if (this->sleep_timeout_expired_()) {
+    this->request_light_sleep_(PowerTransitionSource::SLEEP_TIMEOUT);
+    return;
+  }
   const ESPTime runtime_now = this->time_ != nullptr ? this->time_->now() : ESPTime();
   ESP_LOGI(TAG, "Quiet hours runtime: start=%s end=%s now=%02d:%02d:%02d active=%s",
            this->quiet_hours_start_value_().c_str(), this->quiet_hours_end_value_().c_str(), runtime_now.hour,
@@ -1179,6 +1204,16 @@ void PaperMonoActivityComponent::request_light_sleep_(PowerTransitionSource sour
   this->pending_power_source_ = source;
   this->prepare_controls_exit_for_sleep_();
   this->sleep_eligible_activity_ms_ = this->last_activity_ms_;
+  // Sleep owns the LED policy: stop scheduling alert work and force both
+  // status channels off before the normal sleep checks run.
+  if (this->status_led_sleep_pending_ != nullptr) {
+    this->status_led_sleep_pending_->value() = true;
+  }
+  // Release only status-LED-owned channels; RGB previews retain ownership.
+  if (this->status_led_preview_slot_ == nullptr || this->status_led_preview_slot_->value() < 0) {
+    this->pmu_->set_status_red_led(false);
+    if (this->status_led_blue_switch_ != nullptr) this->status_led_blue_switch_->turn_off();
+  }
   this->light_sleep_pending_ = true;
 }
 
@@ -1221,6 +1256,7 @@ void PaperMonoActivityComponent::complete_pmic_ha_final_full_() {
     this->wifi_transition_pending_->value() = false;
   }
   if (this->display_ != nullptr) {
+    ESP_LOGI(TAG, "EPD recovery: starting mandatory initial FULL");
     ESP_LOGI(TAG, "PMIC boot: final HA FULL requested (ha_state=%d)",
              this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1);
     this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC,
@@ -1325,6 +1361,13 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
   }
 
   if (this->periodic_wake_phase_ == PeriodicWakePhase::SETTLE) {
+    if (this->periodic_alert_pulse_until_ms_ != 0) {
+      if (static_cast<int32_t>(millis() - this->periodic_alert_pulse_until_ms_) < 0)
+        return;
+      this->periodic_alert_pulse_until_ms_ = 0;
+      this->periodic_alert_pulse_triggered_ = true;
+      ESP_LOGI(TAG, "Periodic wake: alert pulse complete");
+    }
     const uint32_t elapsed = millis() - this->periodic_wake_settle_start_ms_;
     if (elapsed < HA_STATE_SETTLE_MS) {
       return;
@@ -1343,6 +1386,21 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
       this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC,
                                       papermono_epaper::RefreshKind::NORMAL, "periodic_wake");
     }
+    const bool low_battery = this->battery_display_level_ != nullptr &&
+                             !std::isnan(this->battery_display_level_->value()) &&
+                             this->battery_display_level_->value() >= 0.0f &&
+                             this->battery_display_level_->value() <
+                                 (this->low_battery_threshold_ != nullptr ? this->low_battery_threshold_->value() : 0.0f);
+    const bool external_power = this->external_power_ != nullptr && this->external_power_->state;
+    const bool ha_missing = this->ha_connection_state_ != nullptr && this->ha_connection_state_->value() == 2;
+    if (!this->periodic_alert_pulse_triggered_ && !external_power && (low_battery || ha_missing) && this->periodic_alert_pulse_ != nullptr) {
+      ESP_LOGI(TAG, "Periodic wake: alert pulse start (%s)", low_battery ? "RED" : "BLUE");
+      this->periodic_alert_pulse_until_ms_ = millis() + 40U;
+      this->periodic_alert_pulse_triggered_ = true;
+      this->periodic_alert_pulse_->execute();
+      return;
+    }
+    ESP_LOGI(TAG, "Periodic wake: entering LIGHT_SLEEP");
     this->request_light_sleep_(PowerTransitionSource::PERIODIC_WAKE);
     this->cancel_periodic_wake_recovery_();
   }
@@ -1365,13 +1423,9 @@ bool PaperMonoActivityComponent::can_enter_light_sleep_() const {
       this->quiet_hours_user_override_->value()) {
     return false;
   }
-  if (this->ha_connection_state_ != nullptr && this->ha_connection_state_->value() == 0) {
-    return false;
-  }
-  if (this->wifi_transition_pending_ != nullptr && this->wifi_transition_pending_->value()) {
-    return false;
-  }
-  if (!this->display_->is_idle() || this->display_->has_refresh_pending()) {
+  // Only an operation physically in progress is a valid wait condition. HA,
+  // Wi-Fi state and queued refresh work must not hold the device awake.
+  if (!this->display_->is_idle()) {
     return false;
   }
   if (this->last_activity_ms_ != this->sleep_eligible_activity_ms_) {
@@ -1459,6 +1513,8 @@ void PaperMonoActivityComponent::enable_wifi_after_wake_(bool timer_wake) {
     this->periodic_wake_started_ms_ = millis();
     this->periodic_wake_recovery_timeout_logged_ = false;
     this->periodic_wake_phase_ = PeriodicWakePhase::WAIT_API;
+    this->periodic_alert_pulse_triggered_ = false;
+    this->periodic_alert_pulse_until_ms_ = 0;
   }
 }
 
@@ -1683,10 +1739,12 @@ void PaperMonoActivityComponent::set_frontlight_from_ha(bool on, float brightnes
 
   if (this->set_frontlight_level_(true, brightness)) {
     this->activity_active_ = true;
-    this->last_activity_ms_ = millis();
-    this->sleep_timeout_logged_ = false;
     ESP_LOGI(TAG, "Frontlight: ON (source=home_assistant, brightness=%u%%)", brightness);
   }
+}
+
+bool PaperMonoActivityComponent::sleep_timeout_expired_() const {
+  return this->last_activity_ms_ != 0 && millis() - this->last_activity_ms_ >= this->sleep_timeout_ms_();
 }
 
 void PaperMonoActivityComponent::set_frontlight_from_output(float level) {

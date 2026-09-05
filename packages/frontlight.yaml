@@ -28,6 +28,9 @@ papermono_activity:
   ha_indoor_humidity: ha_indoor_humidity
   wifi_transition_pending: wifi_transition_pending
   light_sleep_wake_recovery: light_sleep_wake_recovery
+  status_led_sleep_pending: status_led_sleep_pending
+  status_led_preview_slot: active_color_preview_slot
+  status_led_blue_switch: color_preview_blue
   quiet_hours_sleep_display: quiet_hours_sleep_display
   quiet_hours_user_override: quiet_hours_user_override
   battery_display_level: paper_mono_battery_display_level
@@ -37,6 +40,9 @@ papermono_activity:
   screensaver_refresh_minutes: screensaver_refresh_minutes
   quiet_hours_start: quiet_hours_start
   quiet_hours_end: quiet_hours_end
+  external_power: paper_mono_external_power
+  periodic_alert_pulse: status_led_periodic_pulse
+  low_battery_threshold: status_led_low_battery_threshold
   frontlight_light: paper_mono_frontlight
   frontlight_output: paper_mono_frontlight_output
 

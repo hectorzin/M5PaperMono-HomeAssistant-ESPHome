@@ -71,6 +71,7 @@ class PaperMonoEpaper
   bool is_pmic_recovery_pending() const { return this->recovery_pending_; }
   bool is_pmic_recovery_failed() const { return this->hw_recovery_failed_; }
   bool is_pmic_initial_full_required() const { return this->pmic_initial_full_required_; }
+  bool is_pmic_initial_full_started() const { return this->pmic_initial_full_started_; }
   bool is_pmic_mandatory_full_pending() const { return this->must_force_pmic_mandatory_full_(); }
   bool is_pmic_mandatory_full_done() const { return this->pmic_mandatory_full_done_; }
   void set_pmu(m5pm1::M5PM1Component *pmu) { this->pmu_ = pmu; }

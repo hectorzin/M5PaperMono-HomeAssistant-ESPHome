@@ -14,6 +14,7 @@ light:
 
 papermono_activity:
   id: papermono_activity_hub
+  nfc_id: papermono_nfc_hub
   m5pm1_id: m5pm1_pmu
   rtc_id: papermono_rtc_hub
   display_id: epaper_display

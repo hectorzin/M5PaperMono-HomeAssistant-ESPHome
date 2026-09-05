@@ -12,7 +12,7 @@ external_components:
   - source:
       type: local
       path: components
-    components: [papermono_epaper, m5pm1, m5ioe1, papermono_activity, papermono_imu, papermono_rtc, controls]
+    components: [papermono_epaper, m5pm1, m5ioe1, papermono_activity, papermono_imu, papermono_rtc, controls, papermono_nfc]
 
 i2c:
   id: bus_main
@@ -23,6 +23,17 @@ i2c:
 m5ioe1:
   id: m5ioe1_hub
   address: 0x4F
+
+papermono_nfc:
+  id: papermono_nfc_hub
+  i2c_id: bus_main
+  address: 0x50
+  m5ioe1_id: m5ioe1_hub
+  activity_id: papermono_activity_hub
+  uid_sensor:
+    id: nfc_last_uid
+    name: "NFC Last UID"
+    icon: "mdi:nfc"
 
 # GPIO42 is the PaperMono's passive buzzer.  Keep the sound short and quiet;
 # interaction_feedback is the only code path that drives this output.

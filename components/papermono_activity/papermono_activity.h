@@ -31,6 +31,10 @@ namespace esphome::papermono_epaper {
 class PaperMonoEpaper;
 }
 
+namespace esphome::papermono_nfc {
+class PaperMonoNfc;
+}
+
 namespace esphome::papermono_rtc {
 class PaperMonoRtcComponent;
 }
@@ -166,6 +170,7 @@ class PaperMonoActivityComponent : public Component {
     this->quiet_hours_end_ = value;
   }
   void set_time(time::RealTimeClock *time) { this->time_ = time; }
+  void set_nfc(papermono_nfc::PaperMonoNfc *nfc) { this->nfc_ = nfc; }
 
   void report_activity(ActivitySource source);
   void report_touch() { this->report_activity(ActivitySource::TOUCH); }
@@ -173,6 +178,10 @@ class PaperMonoActivityComponent : public Component {
   // True when Wi-Fi and the native API (with state subscription) are ready and
   // ha_connection_state is REAL (not CONNECTING or DEMO).
   bool is_ha_controls_ready() const;
+  bool nfc_polling_allowed() const {
+    return !this->light_sleep_pending_ && this->periodic_wake_phase_ == PeriodicWakePhase::NONE &&
+           this->shutdown_phase_ == ShutdownPhase::NONE;
+  }
 
   void enter_controls(int requested_page = -1);
   void request_controls_entry(int requested_page);
@@ -308,6 +317,7 @@ class PaperMonoActivityComponent : public Component {
   uint32_t last_periodic_tick_activity_ms_{0};
   uint32_t last_gpio_block_log_ms_{0};
   bool activity_active_{false};
+  papermono_nfc::PaperMonoNfc *nfc_{nullptr};
   bool frontlight_on_{false};
   uint8_t frontlight_brightness_percent_{0};
   bool pickup_cleanup_pending_{false};

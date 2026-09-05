@@ -3,10 +3,10 @@
 #include <string>
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/core/component.h"
+#include "esphome/components/text_sensor/text_sensor.h"
 #include "st25r3916_official.h"
 
 namespace esphome::m5ioe1 { class M5IOE1Component; }
-namespace esphome::controls { class Controls; }
 namespace esphome::papermono_activity { class PaperMonoActivityComponent; }
 namespace esphome::gpio { class GPIOPin; }
 
@@ -15,8 +15,10 @@ namespace esphome::papermono_nfc {
 class PaperMonoNfc : public Component, public i2c::I2CDevice {
  public:
   void set_m5ioe1(m5ioe1::M5IOE1Component *ioe) { m5ioe1_ = ioe; }
-  void set_controls(controls::Controls *c) { controls_ = c; }
   void set_activity(papermono_activity::PaperMonoActivityComponent *a) { activity_ = a; }
+  void set_uid_sensor(text_sensor::TextSensor *sensor) { uid_sensor_ = sensor; }
+  void prepare_for_light_sleep();
+  void resume_after_user_wake();
   void set_irq_pin(InternalGPIOPin *pin) { irq_pin_ = pin; }
   void setup() override;
   void loop() override;
@@ -25,8 +27,8 @@ class PaperMonoNfc : public Component, public i2c::I2CDevice {
 
  protected:
   m5ioe1::M5IOE1Component *m5ioe1_{nullptr};
-  controls::Controls *controls_{nullptr};
   papermono_activity::PaperMonoActivityComponent *activity_{nullptr};
+  text_sensor::TextSensor *uid_sensor_{nullptr};
   InternalGPIOPin *irq_pin_{nullptr};
   bool initialized_{false};
   bool tag_latched_{false};

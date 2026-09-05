@@ -40,6 +40,7 @@ CONF_FRONTLIGHT_TIMEOUT_SECONDS = "frontlight_timeout_seconds"
 CONF_SLEEP_TIMEOUT_SECONDS = "sleep_timeout_seconds"
 CONF_FRONTLIGHT_LIGHT = "frontlight_light"
 CONF_FRONTLIGHT_OUTPUT = "frontlight_output"
+CONF_NFC_ID = "nfc_id"
 
 papermono_activity_ns = cg.esphome_ns.namespace("papermono_activity")
 PaperMonoActivityComponent = papermono_activity_ns.class_("PaperMonoActivityComponent", cg.Component)
@@ -94,6 +95,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_SCREENSAVER_REFRESH_MINUTES): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_START): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_END): cv.use_id(globals.GlobalsComponent),
+        cv.Optional(CONF_NFC_ID): cv.use_id(cg.esphome_ns.namespace("papermono_nfc").class_("PaperMonoNfc")),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -163,3 +165,5 @@ async def to_code(config):
     cg.add(var.set_screensaver_refresh_minutes(screensaver_refresh_minutes))
     cg.add(var.set_quiet_hours_start(quiet_hours_start))
     cg.add(var.set_quiet_hours_end(quiet_hours_end))
+    if CONF_NFC_ID in config:
+        cg.add(var.set_nfc(await cg.get_variable(config[CONF_NFC_ID])))

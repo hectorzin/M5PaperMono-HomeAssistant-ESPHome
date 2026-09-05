@@ -1,0 +1,38 @@
+esphome:
+  name: nfc-official-diagnostic
+
+esp32:
+  board: esp32-s3-devkitc1-n16r8
+  framework:
+    type: esp-idf
+  flash_size: 16MB
+
+logger:
+  level: INFO
+  hardware_uart: USB_SERIAL_JTAG
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [m5ioe1, nfc_official_diagnostic]
+
+i2c:
+  id: bus_main
+  sda: GPIO47
+  scl: GPIO48
+  frequency: 400kHz
+
+m5ioe1:
+  id: m5ioe1_hub
+  address: 0x4F
+
+nfc_official_diagnostic:
+  id: nfc_official_diag
+  i2c_id: bus_main
+  address: 0x50
+  m5ioe1_id: m5ioe1_hub
+  irq_pin:
+    number: GPIO6
+    mode:
+      input: true

@@ -35,6 +35,10 @@ namespace esphome::papermono_rtc {
 class PaperMonoRtcComponent;
 }
 
+namespace esphome::papermono_nfc {
+class PaperMonoNfc;
+}
+
 namespace esphome::sensor {
 class Sensor;
 }
@@ -166,6 +170,7 @@ class PaperMonoActivityComponent : public Component {
     this->quiet_hours_end_ = value;
   }
   void set_time(time::RealTimeClock *time) { this->time_ = time; }
+  void set_nfc(papermono_nfc::PaperMonoNfc *nfc) { this->nfc_ = nfc; }
 
   void report_activity(ActivitySource source);
   void report_touch() { this->report_activity(ActivitySource::TOUCH); }
@@ -325,6 +330,7 @@ class PaperMonoActivityComponent : public Component {
   uint32_t pmic_ha_connected_ms_{0};
   uint32_t pmic_ha_next_poll_ms_{0};
   m5ioe1::M5IOE1Component *m5ioe1_{nullptr};
+  papermono_nfc::PaperMonoNfc *nfc_{nullptr};
   PeriodicWakePhase periodic_wake_phase_{PeriodicWakePhase::NONE};
   ShutdownPhase shutdown_phase_{ShutdownPhase::NONE};
   PowerTransitionSource pending_power_source_{PowerTransitionSource::SLEEP_TIMEOUT};

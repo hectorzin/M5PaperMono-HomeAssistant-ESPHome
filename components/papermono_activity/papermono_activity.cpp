@@ -13,6 +13,7 @@
 #include "esphome/components/m5pm1/m5pm1.h"
 #include "esphome/components/light/light_state.h"
 #include "esphome/components/papermono_epaper/papermono_epaper.h"
+#include "esphome/components/papermono_nfc/papermono_nfc.h"
 #include "esphome/components/papermono_rtc/papermono_rtc.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
@@ -1586,6 +1587,10 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
     return;
   }
 
+  if (this->nfc_ != nullptr) {
+    this->nfc_->prepare_for_light_sleep();
+  }
+
   ESP_LOGI(TAG, "Light sleep begin: source=%s", power_source_to_string_(this->pending_power_source_));
   ESP_LOGI(TAG, "Calling esp_light_sleep_start()");
   const esp_err_t sleep_err = esp_light_sleep_start();
@@ -1595,6 +1600,9 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
 
   if (sleep_err != ESP_OK) {
     ESP_LOGE(TAG, "Light sleep FAILED: %s", esp_err_to_name(sleep_err));
+    if (this->nfc_ != nullptr) {
+      this->nfc_->resume_after_light_sleep_failure();
+    }
     this->enable_wifi_after_wake_(false);
     this->light_sleep_pending_ = true;
     return;
@@ -1642,12 +1650,18 @@ void PaperMonoActivityComponent::handle_light_sleep_wake_(esp_sleep_wakeup_cause
 
   if (cause == ESP_SLEEP_WAKEUP_GPIO) {
     ESP_LOGI(TAG, "Light sleep wake cause: TOUCH");
+    if (this->nfc_ != nullptr) {
+      this->nfc_->resume_after_user_wake();
+    }
     this->enable_wifi_after_wake_(false);
     this->report_touch();
     return;
   }
 
   if (cause == ESP_SLEEP_WAKEUP_EXT1) {
+    if (this->nfc_ != nullptr) {
+      this->nfc_->resume_after_user_wake();
+    }
     this->enable_wifi_after_wake_(false);
     const bool motion = this->pmu_->process_pending_irq();
     if (motion) {
@@ -1659,6 +1673,9 @@ void PaperMonoActivityComponent::handle_light_sleep_wake_(esp_sleep_wakeup_cause
   }
 
   ESP_LOGW(TAG, "Wake from light sleep: cause=%d", static_cast<int>(cause));
+  if (this->nfc_ != nullptr) {
+    this->nfc_->resume_after_user_wake();
+  }
   this->enable_wifi_after_wake_(false);
 }
 

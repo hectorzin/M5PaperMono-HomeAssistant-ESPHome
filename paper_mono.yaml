@@ -32,10 +32,15 @@ controls:
         - {entity_id: climate.ac_salon_inteligente, name: Clima}
         - {entity_id: cover.persiana_jardin, name: Persiana}
         - {entity_id: vacuum.lefant_m210_pro_omni_3, name: Robot}
-        - {entity_id: light.luces_jardin, name: "Luces jardín"}
         - {entity_id: media_player.arylic_lp100}
         - {entity_id: switch.enchufe_lavabo_ninas, name: "Enchufe Lavabo Niñas"}
-      # nfc_id: salon (reserved for a future NFC association)
+      nfc_id: "A145E804"
+    - name: "Jardín"
+      entities:
+        - {entity_id: light.luces_jardin, name: "Luces jardín"}
+        - {entity_id: light.pergola, name: Pérgola}
+      nfc_id: "044B2822BE7C80"
+
 packages:
   runtime_config: !include packages/runtime_config.yaml
   core: !include packages/core.yaml

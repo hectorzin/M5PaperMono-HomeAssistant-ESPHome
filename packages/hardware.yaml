@@ -42,6 +42,7 @@ papermono_nfc:
     mode:
       input: true
   uid_sensor: nfc_last_uid
+  controls_id: controls_id
 
 # GPIO42 is the PaperMono's passive buzzer.  Keep the sound short and quiet;
 # interaction_feedback is the only code path that drives this output.

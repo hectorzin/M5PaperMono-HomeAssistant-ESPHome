@@ -64,7 +64,8 @@ class Controls : public Component {
                    sensor::Sensor *current_position, sensor::Sensor *volume,
                    text_sensor::TextSensor *media_title, sensor::Sensor *supported_features,
                    text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name,
-                   const char *block_name, uint8_t block_index, uint16_t block_first_page);
+                   const char *block_name, uint8_t block_index, uint16_t block_first_page,
+                   const char *nfc_id);
   void setup() override;
   void loop() override;
   void dump_config() override;
@@ -75,6 +76,7 @@ class Controls : public Component {
   int control_index_at_page_slot(int page, int visual_slot) const;
   const char *block_name_at_page(int page) const;
   int first_page_for_block(int block_index) const;
+  int first_page_for_nfc_uid(const char *uid) const;
   const char *type_at(size_t index) const;
   const char *entity_id_at(size_t index) const;
   std::string resolved_name_at(size_t index) const;
@@ -153,6 +155,8 @@ class Controls : public Component {
   std::vector<bool> optimistic_volume_valid_{};
   std::vector<std::string> block_names_{};
   std::vector<uint8_t> block_indices_{};
+  std::vector<std::string> block_nfc_ids_{};
+  std::vector<uint16_t> block_first_pages_{};
   size_t count_{0};
   int active_slot_{-1};
   papermono_epaper::PaperMonoEpaper *display_{nullptr};

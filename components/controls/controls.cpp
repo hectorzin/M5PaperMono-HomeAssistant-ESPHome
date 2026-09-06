@@ -22,7 +22,8 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
                            sensor::Sensor *current_position, sensor::Sensor *volume,
                            text_sensor::TextSensor *media_title, sensor::Sensor *supported_features,
                            text_sensor::TextSensor *media_artist, text_sensor::TextSensor *media_album_name,
-                           const char *block_name, uint8_t block_index, uint16_t) {
+                           const char *block_name, uint8_t block_index, uint16_t block_first_page,
+                           const char *nfc_id) {
   const size_t slot = static_cast<size_t>(index);
   if (slot >= entries_.size()) {
     entries_.resize(slot + 1);
@@ -39,12 +40,21 @@ void Controls::add_control(uint8_t index, const char *entity_id, const char *nam
     block_names_.resize(slot + 1);
     block_indices_.resize(slot + 1);
   }
+  if (block_index >= block_nfc_ids_.size()) {
+    block_nfc_ids_.resize(static_cast<size_t>(block_index) + 1);
+    block_first_pages_.resize(static_cast<size_t>(block_index) + 1);
+  }
   entries_[slot] = {entity_id, name, domain, state, friendly_name, modes, hs_color,
                     color_temperature, min_color_temperature, max_color_temperature, brightness,
                     current_temperature, min_temperature, max_temperature, target_temperature,
                     current_position, volume, media_title, supported_features, media_artist, media_album_name};
   block_names_[slot] = block_name != nullptr ? block_name : "Control";
   block_indices_[slot] = block_index;
+  if (block_nfc_ids_[block_index].empty() && nfc_id != nullptr) {
+    for (const char *cursor = nfc_id; *cursor != '\0'; ++cursor)
+      block_nfc_ids_[block_index] += static_cast<char>(std::toupper(static_cast<unsigned char>(*cursor)));
+  }
+  block_first_pages_[block_index] = block_first_page;
   count_ = std::max(count_, slot + 1);
 }
 
@@ -196,6 +206,18 @@ int Controls::first_page_for_block(int block_index) const {
     if (block_indices_[start] == block_index) return page;
     page += static_cast<int>((end - start + 5) / 6);
     start = end;
+  }
+  return -1;
+}
+int Controls::first_page_for_nfc_uid(const char *uid) const {
+  if (uid == nullptr) return -1;
+  std::string normalized;
+  for (const char *cursor = uid; *cursor != '\0'; ++cursor)
+    normalized += static_cast<char>(std::toupper(static_cast<unsigned char>(*cursor)));
+  if (normalized.empty()) return -1;
+  for (size_t block = 0; block < block_nfc_ids_.size(); ++block) {
+    if (!block_nfc_ids_[block].empty() && block_nfc_ids_[block] == normalized)
+      return block_first_pages_[block];
   }
   return -1;
 }

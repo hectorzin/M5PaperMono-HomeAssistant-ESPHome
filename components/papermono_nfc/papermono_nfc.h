@@ -16,6 +16,10 @@ namespace esphome::papermono_activity {
 class PaperMonoActivityComponent;
 }
 
+namespace esphome::controls {
+class Controls;
+}
+
 namespace esphome::text_sensor {
 class TextSensor;
 }
@@ -34,6 +38,7 @@ class PaperMonoNfc : public Component, public i2c::I2CDevice {
   void set_activity(papermono_activity::PaperMonoActivityComponent *value) { activity_ = value; }
   void set_irq_pin(InternalGPIOPin *value) { irq_pin_ = value; }
   void set_uid_sensor(text_sensor::TextSensor *value) { uid_sensor_ = value; }
+  void set_controls(controls::Controls *value) { controls_ = value; }
 
   void prepare_for_light_sleep();
   void resume_after_user_wake();
@@ -71,6 +76,7 @@ class PaperMonoNfc : public Component, public i2c::I2CDevice {
   papermono_activity::PaperMonoActivityComponent *activity_{nullptr};
   InternalGPIOPin *irq_pin_{nullptr};
   text_sensor::TextSensor *uid_sensor_{nullptr};
+  controls::Controls *controls_{nullptr};
   official::St25r3916NfcA driver_;
   State state_{State::WAIT_WAKEUP};
   volatile bool irq_seen_{false};

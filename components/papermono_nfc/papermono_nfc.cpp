@@ -3,6 +3,8 @@
 #include <algorithm>
 
 #include "esphome/components/m5ioe1/m5ioe1.h"
+#include "esphome/components/controls/controls.h"
+#include "esphome/components/papermono_activity/papermono_activity.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/log.h"
@@ -286,6 +288,12 @@ void PaperMonoNfc::loop() {
     if (this->confirm_uid_(uid)) {
       ESP_LOGI(TAG, "NFC UID confirmed: %s", uid.c_str());
       this->uid_sensor_->publish_state(uid);
+      const int page = this->controls_ != nullptr ? this->controls_->first_page_for_nfc_uid(uid.c_str()) : -1;
+      if (page >= 0) {
+        ESP_LOGI(TAG, "NFC UID matched controls block: uid=%s block=%s page=%d", uid.c_str(),
+                 this->controls_->block_name_at_page(page), page);
+        this->activity_->request_controls_entry(page);
+      }
       if (!this->enter_removal_wait_()) this->arm_wakeup_();
     } else if (!this->recover_false_wakeup_()) {
       this->arm_wakeup_();
@@ -306,6 +314,12 @@ void PaperMonoNfc::loop() {
       if (this->confirm_uid_(uid)) {
         ESP_LOGI(TAG, "NFC UID confirmed: %s", uid.c_str());
         this->uid_sensor_->publish_state(uid);
+        const int page = this->controls_ != nullptr ? this->controls_->first_page_for_nfc_uid(uid.c_str()) : -1;
+        if (page >= 0) {
+          ESP_LOGI(TAG, "NFC UID matched controls block: uid=%s block=%s page=%d", uid.c_str(),
+                   this->controls_->block_name_at_page(page), page);
+          this->activity_->request_controls_entry(page);
+        }
         if (!this->enter_removal_wait_()) this->arm_wakeup_();
         return;
       }

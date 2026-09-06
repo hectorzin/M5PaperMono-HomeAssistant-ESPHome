@@ -29,6 +29,7 @@ CONF_MEDIA_TITLE_SENSOR_ID = "media_title_sensor_id"
 CONF_SUPPORTED_FEATURES_SENSOR_ID = "supported_features_sensor_id"
 CONF_MEDIA_ARTIST_SENSOR_ID = "media_artist_sensor_id"
 CONF_MEDIA_ALBUM_NAME_SENSOR_ID = "media_album_name_sensor_id"
+CONF_NFC_ID = "nfc_id"
 
 controls_ns = cg.esphome_ns.namespace("controls")
 Controls = controls_ns.class_("Controls", cg.Component)
@@ -40,11 +41,25 @@ CONTROL_SCHEMA = cv.Schema({
 BLOCK_SCHEMA = cv.Schema({
     cv.Required(CONF_NAME): cv.string,
     cv.Required(CONF_ENTITIES): cv.All(cv.ensure_list(CONTROL_SCHEMA), cv.Length(max=MAX_CONTROLS)),
-    cv.Optional("nfc_id"): cv.string,
+    cv.Optional(CONF_NFC_ID): cv.string,
 })
+
+
+def _normalized_nfc_id(value):
+    return value.strip().upper()
 
 def _validate_blocks(blocks):
     blocks = cv.All(cv.ensure_list(BLOCK_SCHEMA), cv.Length(min=1))(blocks)
+    nfc_blocks = {}
+    for block_index, block in enumerate(blocks):
+        nfc_id = _normalized_nfc_id(block.get(CONF_NFC_ID, ""))
+        if nfc_id:
+            previous = nfc_blocks.get(nfc_id)
+            if previous is not None:
+                raise cv.Invalid(
+                    f"duplicate nfc_id '{nfc_id}' in blocks {previous + 1} and {block_index + 1}"
+                )
+            nfc_blocks[nfc_id] = block_index
     flattened = []
     for block in blocks:
         flattened.extend(block[CONF_ENTITIES])
@@ -131,14 +146,16 @@ def _flatten_controls(config):
         flattened = []
         block_names = []
         block_indices = []
+        block_nfc_ids = []
         for block_index, block in enumerate(config[CONF_BLOCKS]):
             for control in block[CONF_ENTITIES]:
                 flattened.append(control)
                 block_names.append(block[CONF_NAME])
                 block_indices.append(block_index)
-        return _declare_control_sensor_ids(flattened), block_names, block_indices
+                block_nfc_ids.append(_normalized_nfc_id(block.get(CONF_NFC_ID, "")))
+        return _declare_control_sensor_ids(flattened), block_names, block_indices, block_nfc_ids
     flattened = _declare_control_sensor_ids(config[CONF_CONTROLS])
-    return flattened, ["Control"] * len(flattened), [0] * len(flattened)
+    return flattened, ["Control"] * len(flattened), [0] * len(flattened), [""] * len(flattened)
 
 
 CONFIG_SCHEMA = cv.Schema({
@@ -185,8 +202,18 @@ async def to_code(config):
     cg.add(var.set_controls_view(await cg.get_variable(config["controls_view"])))
     cg.add(var.set_ha_connection_state(await cg.get_variable(config["ha_connection_state"])))
 
-    controls, block_names, block_indices = _flatten_controls(config)
+    controls, block_names, block_indices, block_nfc_ids = _flatten_controls(config)
     block_page_starts = {}
+    page = 0
+    start = 0
+    while start < len(block_indices):
+        block_index = block_indices[start]
+        end = start + 1
+        while end < len(block_indices) and block_indices[end] == block_index:
+            end += 1
+        block_page_starts[block_index] = page
+        page += (end - start + 5) // 6
+        start = end
     for index, control in enumerate(controls):
         entity = control[CONF_ENTITY_ID]
         domain = entity.split(".", 1)[0]
@@ -229,9 +256,9 @@ async def to_code(config):
             print(f"[controls]   no domain-specific attributes for {domain}")
 
         block_index = block_indices[index]
-        block_page_starts.setdefault(block_index, index // 6)
         cg.add(var.add_control(index, entity, control[CONF_NAME], domain, state, friendly, modes,
                                hs_color, color_temperature, min_color_temperature, max_color_temperature,
                                brightness, current, minimum, maximum, target, current_position,
                                volume, media_title, supported_features, media_artist, media_album_name,
-                               block_names[index], block_index, block_page_starts[block_index]))
+                               block_names[index], block_index, block_page_starts[block_index],
+                               block_nfc_ids[index]))

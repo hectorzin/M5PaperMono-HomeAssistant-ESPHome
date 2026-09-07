@@ -309,6 +309,7 @@ class PaperMonoActivityComponent : public Component {
   uint32_t periodic_wake_activity_ms_{0};
   uint32_t periodic_wake_settle_start_ms_{0};
   uint32_t periodic_wake_started_ms_{0};
+  bool periodic_wake_refresh_requested_{false};
   uint32_t last_periodic_bucket_{UINT32_MAX};
   uint32_t last_periodic_tick_activity_ms_{0};
   uint32_t last_gpio_block_log_ms_{0};

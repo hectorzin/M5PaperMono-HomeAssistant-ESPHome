@@ -115,6 +115,7 @@ void PaperMonoActivityComponent::setup() {
   this->periodic_wake_activity_ms_ = 0;
   this->periodic_wake_settle_start_ms_ = 0;
   this->periodic_wake_started_ms_ = 0;
+  this->periodic_wake_refresh_requested_ = false;
   this->periodic_alert_pulse_until_ms_ = 0;
   this->periodic_alert_pulse_triggered_ = false;
   this->last_periodic_bucket_ = UINT32_MAX;
@@ -1376,18 +1377,21 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
       return;
     }
 
-    if (this->pmu_ != nullptr) {
-      this->pmu_->refresh_power_and_battery();
-    }
-
-    ESP_LOGI(TAG, "Periodic wake: refresh after %u ms settle", elapsed);
-    if (this->display_ != nullptr) {
-      const uint32_t bucket = this->current_time_bucket_();
-      if (bucket != UINT32_MAX) {
-        this->last_periodic_bucket_ = bucket;
+    if (!this->periodic_wake_refresh_requested_) {
+      this->periodic_wake_refresh_requested_ = true;
+      if (this->pmu_ != nullptr) {
+        this->pmu_->refresh_power_and_battery();
       }
-      this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC,
-                                      papermono_epaper::RefreshKind::NORMAL, "periodic_wake");
+
+      ESP_LOGI(TAG, "Periodic wake: refresh after %u ms settle", elapsed);
+      if (this->display_ != nullptr) {
+        const uint32_t bucket = this->current_time_bucket_();
+        if (bucket != UINT32_MAX) {
+          this->last_periodic_bucket_ = bucket;
+        }
+        this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC,
+                                        papermono_epaper::RefreshKind::NORMAL, "periodic_wake");
+      }
     }
     const bool low_battery = this->battery_display_level_ != nullptr &&
                              !std::isnan(this->battery_display_level_->value()) &&
@@ -1516,6 +1520,7 @@ void PaperMonoActivityComponent::enable_wifi_after_wake_(bool timer_wake) {
     this->periodic_wake_started_ms_ = millis();
     this->periodic_wake_recovery_timeout_logged_ = false;
     this->periodic_wake_phase_ = PeriodicWakePhase::WAIT_API;
+    this->periodic_wake_refresh_requested_ = false;
     this->periodic_alert_pulse_triggered_ = false;
     this->periodic_alert_pulse_until_ms_ = 0;
   }

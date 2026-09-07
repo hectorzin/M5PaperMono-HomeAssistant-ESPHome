@@ -35,7 +35,8 @@ font:
 
 # These are the same compact Material Design weather pictograms used by the
 # reference e-paper dashboard. ESPHome embeds them at build time, so they stay
-# monochrome and do not add a runtime dependency.
+# monochrome and do not add a runtime dependency. Each Home Assistant weather
+# state has its own image; sleeping_moon_icon is reserved for the ZZZ screen.
 # Keep the initial page deterministic and ignore the FT6336G startup edge
 # that can otherwise be reported as a touch before the panel is settled.
 esphome:
@@ -57,6 +58,11 @@ image:
     type: grayscale
     transparency: alpha_channel
   - file: mdi:weather-partly-cloudy
+    id: weather_partly_cloudy_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-cloudy
     id: weather_cloudy_icon
     resize: 86x86
     type: grayscale
@@ -78,6 +84,51 @@ image:
     transparency: alpha_channel
   - file: mdi:weather-windy
     id: weather_windy_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-night
+    id: weather_clear_night_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-pouring
+    id: weather_pouring_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-lightning
+    id: weather_lightning_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-lightning-rainy
+    id: weather_lightning_rainy_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-hail
+    id: weather_hail_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-snowy-rainy
+    id: weather_snowy_rainy_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-windy-variant
+    id: weather_windy_variant_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:alert
+    id: weather_exceptional_icon
+    resize: 86x86
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:weather-cloudy-alert
+    id: weather_fallback_icon
     resize: 86x86
     type: grayscale
     transparency: alpha_channel
@@ -415,19 +466,6 @@ display:
         const bool battery_soc_state_available = id(ha_battery_soc).has_state() && !std::isnan(id(ha_battery_soc).state);
 
         const std::string &weather_state = id(ha_weather_state).state;
-        const bool weather_available = id(ha_weather_state).has_state() && !weather_state.empty() &&
-                                       weather_state != "unknown" && weather_state != "unavailable";
-        const char *weather = use_demo_globally ? "SOLEADO" : "—";
-        if (!use_demo_globally && weather_available) {
-          const std::string &state = id(ha_weather_state).state;
-          weather = "TIEMPO";
-          if (state == "cloudy" || state == "partlycloudy") weather = "NUBLADO";
-          else if (state == "rainy" || state == "pouring") weather = "LLUVIA";
-          else if (state == "snowy") weather = "NIEVE";
-          else if (state == "fog") weather = "NIEBLA";
-          else if (state == "windy") weather = "VIENTO";
-          else if (state == "sunny" || state == "clear-night") weather = "SOLEADO";
-        }
         char outdoor_temp_text[20], indoor_temp_text[20], humidity_text[24], indoor_humidity_text[24], wind_text[28], co2_text[24], pm_indoor_text[28], pm_outdoor_text[28], voc_text[24], weather_detail_text[32];
         char solar_text[20], house_text[20], grid_text[24], battery_text[28], soc_text[20];
         auto power_text = [&](char *buffer, size_t size, bool has_value, float watts) {
@@ -473,18 +511,47 @@ display:
         text_or_dash(soc_text, sizeof(soc_text), battery_soc_available, id(ha_battery_soc).state, 76.0f, "%.0f %%");
 
         auto draw_weather_icon = [&](int x, int y) {
-          if (use_demo_globally || weather == std::string("SOLEADO"))
+          // Keep this mapping in HA's native state vocabulary. In particular,
+          // clear-night must never share sunny's image.
+          const std::string &state = use_demo_globally ? std::string("sunny") : weather_state;
+          if (state == "sunny")
             it.image(x, y, id(weather_sunny_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
-          else if (weather == std::string("NUBLADO"))
+          else if (state == "clear-night")
+            it.image(x, y, id(weather_clear_night_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "partlycloudy")
+            it.image(x, y, id(weather_partly_cloudy_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "cloudy")
             it.image(x, y, id(weather_cloudy_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
-          else if (weather == std::string("LLUVIA"))
+          else if (state == "rainy")
             it.image(x, y, id(weather_rainy_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
-          else if (weather == std::string("NIEVE"))
+          else if (state == "pouring")
+            it.image(x, y, id(weather_pouring_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "lightning")
+            it.image(x, y, id(weather_lightning_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "lightning-rainy")
+            it.image(x, y, id(weather_lightning_rainy_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "hail")
+            it.image(x, y, id(weather_hail_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "snowy")
             it.image(x, y, id(weather_snowy_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
-          else if (weather == std::string("NIEBLA"))
+          else if (state == "snowy-rainy")
+            it.image(x, y, id(weather_snowy_rainy_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "fog")
             it.image(x, y, id(weather_fog_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
-          else if (weather == std::string("VIENTO"))
+          else if (state == "windy")
             it.image(x, y, id(weather_windy_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "windy-variant")
+            it.image(x, y, id(weather_windy_variant_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else if (state == "exceptional")
+            it.image(x, y, id(weather_exceptional_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          else {
+            static std::string last_unknown_weather_state;
+            if (state != last_unknown_weather_state) {
+              ESP_LOGW("weather", "Unknown Home Assistant weather state '%s'; using fallback icon", state.c_str());
+              last_unknown_weather_state = state;
+            }
+            it.image(x, y, id(weather_fallback_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+          }
         };
 
         // Header: the HA time source is intentionally the sole source of truth.

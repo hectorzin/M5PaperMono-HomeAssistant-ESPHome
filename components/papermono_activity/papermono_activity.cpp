@@ -1332,28 +1332,30 @@ void PaperMonoActivityComponent::process_periodic_wake_recovery_() {
     return;
   }
 
-  if (!this->is_network_api_ready_()) {
+  const bool network_api_ready = this->is_network_api_ready_();
+  if (!network_api_ready && this->periodic_wake_phase_ == PeriodicWakePhase::WAIT_API) {
     const uint32_t elapsed = millis() - this->periodic_wake_started_ms_;
-    if (this->periodic_wake_started_ms_ != 0 && elapsed >= PERIODIC_WAKE_RECOVERY_TIMEOUT_MS) {
-      if (!this->periodic_wake_recovery_timeout_logged_) {
-        ESP_LOGI(TAG, "Periodic wake: network/API timeout, returning to sleep");
-        this->periodic_wake_recovery_timeout_logged_ = true;
-      }
-      this->periodic_wake_phase_ = PeriodicWakePhase::NONE;
-      this->periodic_wake_settle_start_ms_ = 0;
-      this->periodic_wake_started_ms_ = 0;
-      this->clear_wake_recovery_flag_();
-      this->request_light_sleep_(PowerTransitionSource::PERIODIC_WAKE);
-      if (this->can_enter_light_sleep_()) {
-        this->enter_light_sleep_();
-      }
+    if (this->periodic_wake_started_ms_ == 0 || elapsed < PERIODIC_WAKE_RECOVERY_TIMEOUT_MS) {
+      return;
     }
+
+    if (!this->periodic_wake_recovery_timeout_logged_) {
+      ESP_LOGI(TAG,
+               "Periodic wake: network/API timeout after %u ms; refreshing with local time and cached HA state",
+               elapsed);
+      this->periodic_wake_recovery_timeout_logged_ = true;
+    }
+    this->periodic_wake_settle_start_ms_ = millis();
+    this->periodic_wake_phase_ = PeriodicWakePhase::SETTLE;
+  } else if (!network_api_ready && this->periodic_wake_phase_ != PeriodicWakePhase::SETTLE) {
     return;
   }
 
-  this->periodic_wake_recovery_timeout_logged_ = false;
+  if (network_api_ready) {
+    this->periodic_wake_recovery_timeout_logged_ = false;
+  }
 
-  if (this->periodic_wake_phase_ == PeriodicWakePhase::WAIT_API) {
+  if (network_api_ready && this->periodic_wake_phase_ == PeriodicWakePhase::WAIT_API) {
     ESP_LOGI(TAG, "Periodic wake: API ready, settling HA states");
     this->periodic_wake_settle_start_ms_ = millis();
     this->periodic_wake_phase_ = PeriodicWakePhase::SETTLE;
@@ -1424,9 +1426,9 @@ bool PaperMonoActivityComponent::can_enter_light_sleep_() const {
       this->quiet_hours_user_override_->value()) {
     return false;
   }
-  // Only an operation physically in progress is a valid wait condition. HA,
-  // Wi-Fi state and queued refresh work must not hold the device awake.
-  if (!this->display_->is_idle()) {
+  // HA and Wi-Fi state must not hold the device awake, but queued refresh
+  // work must drain before entering light sleep.
+  if (!this->display_->is_idle() || this->display_->has_refresh_pending()) {
     return false;
   }
   if (this->last_activity_ms_ != this->sleep_eligible_activity_ms_) {

@@ -10,6 +10,14 @@ I2C frequency: 400 kHz
 NFC power: M5IOE1 GPIO4, active high
 ```
 
+This document is the low-level PaperMono/UserDemo validation reference. The
+register tables below describe that UserDemo and are not an exact specification
+of the current firmware initialization. The current ESPHome firmware uses the
+same wiring and NFC-A transaction flow, but its `bus_main` is configured at
+100 kHz in `paper_mono.yaml`. The firmware integration details, low-power state
+machine, UID publication, and block navigation are documented in
+[NFC.md](NFC.md).
+
 The following sequence has been verified:
 
 ```text
@@ -181,7 +189,7 @@ The internal I2C bus uses GPIO47/GPIO48
 UserDemo uses 400 kHz I2C
 ```
 
-The PaperMono UserDemo does not use the dedicated ST25R3916 IRQ pin. Instead, it polls the IRQ status registers over I2C. Therefore, an ESPHome component can also use polling.
+The PaperMono UserDemo does not use the dedicated ST25R3916 IRQ pin. Instead, it polls the IRQ status registers over I2C. Therefore, an ESPHome component can also use polling. The current firmware integration documented in [NFC.md](NFC.md) additionally uses the ST25R3916 IRQ line on ESP32 GPIO6 to start the low-power wake/confirmation path.
 
 With a single tag, the absence of `COL` is normal. The key items to check are `RXE`, FIFO length, error IRQs, and `COLLISION_DISPLAY`.
 

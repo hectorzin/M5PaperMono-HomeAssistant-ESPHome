@@ -22,6 +22,7 @@ substitutions:
   quiet_hours_start: "00:00"
   quiet_hours_end: "08:00"
   status_led_low_battery_threshold: "20"
+  ha_notification_text_entity: input_text.paper_mono_notification
 
 controls:
   blocks:

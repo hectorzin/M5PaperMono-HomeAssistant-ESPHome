@@ -5,6 +5,46 @@ text_sensor:
     id: ha_weather_state
     entity_id: ${ha_weather_entity}
     internal: true
+  - platform: homeassistant
+    id: ha_notification_text
+    entity_id: ${ha_notification_text_entity}
+    internal: true
+    on_value:
+      then:
+        - lambda: |-
+            const std::string &text = x;
+            if (text.empty()) {
+              id(notification_dismissed_text) = "";
+              if (!id(notification_active))
+                return;
+              id(notification_active) = false;
+              id(notification_alert_active) = false;
+              id(notification_pending_text) = "";
+              id(status_led_update).execute();
+              if (!id(papermono_activity_hub).is_periodic_wake_active()) {
+                id(epaper_display).request_refresh(
+                    papermono_epaper::RefreshPolicy::AUTOMATIC,
+                    papermono_epaper::RefreshKind::NORMAL, "notification_clear");
+              }
+              return;
+            }
+            if (text == id(notification_pending_text))
+              return;
+            if (text == id(notification_dismissed_text))
+              return;
+
+            id(notification_pending_text) = text;
+            id(notification_active) = true;
+            id(notification_alert_active) = true;
+            id(notification_alert_blink_on) = true;
+            id(notification_alert_blink_phase_ms) = static_cast<int>(millis());
+            id(papermono_activity_hub).report_notification_activity();
+            if (!id(papermono_activity_hub).is_in_quiet_hours())
+              id(notification_feedback).execute();
+            id(status_led_update).execute();
+            id(epaper_display).request_refresh(
+                papermono_epaper::RefreshPolicy::AUTOMATIC,
+                papermono_epaper::RefreshKind::NORMAL, "notification");
 
 sensor:
   - platform: homeassistant
@@ -127,7 +167,79 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: notification_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: notification_alert_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: notification_pending_text
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: notification_dismissed_text
+    type: std::string
+    restore_value: no
+    initial_value: '""'
+  - id: notification_alert_blink_on
+    type: bool
+    restore_value: no
+    initial_value: 'true'
+  - id: notification_alert_blink_phase_ms
+    type: int
+    restore_value: no
+    initial_value: '0'
 script:
+  - id: notification_dismiss
+    mode: restart
+    then:
+      - lambda: |-
+          if (!id(notification_active))
+            return;
+          const std::string &shown = id(notification_pending_text).empty()
+                                         ? id(ha_notification_text).state
+                                         : id(notification_pending_text);
+          id(notification_dismissed_text) = shown;
+          id(notification_active) = false;
+          id(notification_alert_active) = false;
+          id(notification_pending_text) = "";
+          id(status_led_update).execute();
+          id(epaper_display).request_refresh(
+              papermono_epaper::RefreshPolicy::USER_INTERACTION,
+              papermono_epaper::RefreshKind::NORMAL, "notification_dismiss");
+      - if:
+          condition:
+            api.connected:
+          then:
+            - homeassistant.action:
+                action: input_text.set_value
+                data:
+                  entity_id: ${ha_notification_text_entity}
+                  value: ""
+          else:
+            - lambda: |-
+                ESP_LOGW("notification", "HA disconnected; dismissed locally, will clear helper when API returns");
+
+  - id: notification_clear_helper_retry
+    mode: restart
+    then:
+      - if:
+          condition:
+            and:
+              - api.connected:
+              - lambda: |-
+                  return !id(notification_dismissed_text).empty() &&
+                         id(ha_notification_text).has_state() &&
+                         id(ha_notification_text).state == id(notification_dismissed_text);
+          then:
+            - homeassistant.action:
+                action: input_text.set_value
+                data:
+                  entity_id: ${ha_notification_text_entity}
+                  value: ""
+
   - id: interaction_feedback
     mode: restart
     then:
@@ -138,6 +250,45 @@ script:
       - output.set_level:
           id: interaction_feedback_output
           level: 0%
+
+  - id: notification_feedback
+    mode: restart
+    then:
+      - output.ledc.set_frequency:
+          id: interaction_feedback_output
+          frequency: 1200Hz
+      - output.set_level:
+          id: interaction_feedback_output
+          level: 8%
+      - delay: 70ms
+      - output.set_level:
+          id: interaction_feedback_output
+          level: 0%
+      - delay: 60ms
+      - output.ledc.set_frequency:
+          id: interaction_feedback_output
+          frequency: 1600Hz
+      - output.set_level:
+          id: interaction_feedback_output
+          level: 8%
+      - delay: 70ms
+      - output.set_level:
+          id: interaction_feedback_output
+          level: 0%
+      - delay: 60ms
+      - output.ledc.set_frequency:
+          id: interaction_feedback_output
+          frequency: 2100Hz
+      - output.set_level:
+          id: interaction_feedback_output
+          level: 8%
+      - delay: 140ms
+      - output.set_level:
+          id: interaction_feedback_output
+          level: 0%
+      - output.ledc.set_frequency:
+          id: interaction_feedback_output
+          frequency: 4000Hz
 
   - id: ha_controls_action_blocked
     parameters:
@@ -1293,6 +1444,7 @@ interval:
                   id(ha_ever_connected) = true;
                   id(m5pm1_pmu).log_pmic_wake_recovery_summary_if_needed();
                 }
+                id(notification_clear_helper_retry).execute();
           else:
             - lambda: |-
                 if (id(light_sleep_wake_recovery))

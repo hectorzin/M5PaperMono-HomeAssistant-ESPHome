@@ -71,6 +71,7 @@ class PaperMonoFrontlightOutput : public output::FloatOutput {
 enum class ActivitySource : uint8_t {
   MOTION = 0,
   TOUCH = 1,
+  NOTIFICATION = 2,
 };
 
 enum class PeriodicWakePhase : uint8_t {
@@ -174,6 +175,11 @@ class PaperMonoActivityComponent : public Component {
 
   void report_activity(ActivitySource source);
   void report_touch() { this->report_activity(ActivitySource::TOUCH); }
+  // Promote a new notification to a full activity session (equivalent to touch).
+  void report_notification_activity();
+  // True while periodic wake recovery is active and may still request periodic_wake refresh.
+  bool is_periodic_wake_active() const { return this->periodic_wake_phase_ != PeriodicWakePhase::NONE; }
+  bool is_in_quiet_hours() const { return this->is_in_quiet_hours_(); }
 
   // True when Wi-Fi and the native API (with state subscription) are ready and
   // ha_connection_state is REAL (not CONNECTING or DEMO).
@@ -241,7 +247,6 @@ class PaperMonoActivityComponent : public Component {
   bool begin_quiet_hours_shutdown_();
   void cancel_shutdown_();
   void prepare_controls_exit_for_sleep_();
-  bool suppress_quiet_hours_sleep_redirect_(PowerTransitionSource source) const;
   uint32_t timeout_ms_() const {
     const uint32_t seconds = this->frontlight_timeout_seconds_ != nullptr ? this->frontlight_timeout_seconds_->value() : 30U;
     return seconds == 0 ? 30000U : seconds * 1000U;
@@ -337,7 +342,6 @@ class PaperMonoActivityComponent : public Component {
   PowerTransitionSource pending_power_source_{PowerTransitionSource::SLEEP_TIMEOUT};
   LightSleepTimerReason light_sleep_timer_reason_{LightSleepTimerReason::NORMAL_REFRESH};
   bool ha_manual_light_sleep_armed_{false};
-  bool sleep_timeout_light_sleep_cycle_{false};
   uint32_t manual_light_wake_seconds_{0};
   uint32_t manual_shutdown_wake_seconds_{0};
   uint32_t last_motion_log_ms_{0};

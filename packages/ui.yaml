@@ -32,6 +32,24 @@ font:
   - file: "fonts/DejaVuSans.ttf"
     id: font_device_battery
     size: 20
+  - file: "fonts/DejaVuSans.ttf"
+    id: font_notification_title
+    size: 28
+    glyphsets:
+      - GF_Latin_Core
+    glyphs: ["áéíóúÁÉÍÓÚñÑüÜ"]
+  - file: "fonts/DejaVuSans.ttf"
+    id: font_notification_body
+    size: 32
+    glyphsets:
+      - GF_Latin_Core
+    glyphs: ["áéíóúÁÉÍÓÚñÑüÜ"]
+  - file: "fonts/DejaVuSans.ttf"
+    id: font_notification_body_small
+    size: 24
+    glyphsets:
+      - GF_Latin_Core
+    glyphs: ["áéíóúÁÉÍÓÚñÑüÜ"]
 
 # These are the same compact Material Design weather pictograms used by the
 # reference e-paper dashboard. ESPHome embeds them at build time, so they stay
@@ -140,6 +158,11 @@ image:
   - file: mdi:home-assistant
     id: home_assistant_icon
     resize: 160x160
+    type: grayscale
+    transparency: alpha_channel
+  - file: mdi:bell-outline
+    id: notification_bell_icon
+    resize: 72x72
     type: grayscale
     transparency: alpha_channel
   - file: mdi:solar-power
@@ -431,7 +454,82 @@ display:
         }
       };
 
-      if (!id(controls_view)) {
+      if (id(notification_active)) {
+        const int margin_x = 40;
+        const int btn_top = h - 100;
+        const int btn_bottom = h - 30;
+        const int btn_left = margin_x;
+        const int btn_right = w - margin_x;
+        it.line(margin_x, 80, w - margin_x, 80, Color::BLACK);
+        it.line(margin_x, btn_top - 20, w - margin_x, btn_top - 20, Color::BLACK);
+        it.image(w / 2, 36, id(notification_bell_icon), ImageAlign::TOP_CENTER, Color::BLACK, Color::WHITE);
+        it.printf(w / 2, 118, id(font_notification_title), Color::BLACK, TextAlign::TOP_CENTER, "NOTIFICACION");
+        const std::string &message = id(notification_pending_text).empty()
+                                         ? id(ha_notification_text).state
+                                         : id(notification_pending_text);
+        auto measure_width = [&](const std::string &value, auto *font) {
+          int bounds_x = 0, bounds_y = 0, width = 0, height = 0;
+          it.get_text_bounds(0, 0, value.c_str(), font, TextAlign::TOP_LEFT,
+                             &bounds_x, &bounds_y, &width, &height);
+          return width;
+        };
+        auto wrap_message = [&](const std::string &text, auto *font, int max_width) {
+          std::vector<std::string> lines;
+          std::string word;
+          std::string line;
+          for (size_t i = 0; i <= text.size(); i++) {
+            const char c = i < text.size() ? text[i] : ' ';
+            if (c == ' ' || c == '\n' || i == text.size()) {
+              if (!word.empty()) {
+                const std::string candidate = line.empty() ? word : line + " " + word;
+                if (!line.empty() && measure_width(candidate, font) > max_width) {
+                  lines.push_back(line);
+                  line = word;
+                } else {
+                  line = candidate;
+                }
+                word.clear();
+              }
+              if (c == '\n' && !line.empty()) {
+                lines.push_back(line);
+                line.clear();
+              }
+            } else {
+              word.push_back(c);
+            }
+          }
+          if (!line.empty())
+            lines.push_back(line);
+          return lines;
+        };
+        const int text_max_width = w - 2 * margin_x;
+        auto *body_font = id(font_notification_body);
+        std::vector<std::string> lines = wrap_message(message, body_font, text_max_width);
+        if (lines.size() > 6) {
+          body_font = id(font_notification_body_small);
+          lines = wrap_message(message, body_font, text_max_width);
+        }
+        int line_height = 0;
+        if (!lines.empty()) {
+          int bounds_x = 0, bounds_y = 0, width = 0, height = 0;
+          it.get_text_bounds(0, 0, lines[0].c_str(), body_font, TextAlign::TOP_LEFT,
+                             &bounds_x, &bounds_y, &width, &height);
+          line_height = height + 8;
+        }
+        const int text_block_height = static_cast<int>(lines.size()) * line_height;
+        const int text_area_top = 150;
+        const int text_area_bottom = btn_top - 40;
+        int text_y = text_area_top;
+        if (text_block_height < (text_area_bottom - text_area_top)) {
+          text_y = text_area_top + ((text_area_bottom - text_area_top) - text_block_height) / 2;
+        }
+        for (const auto &line : lines) {
+          it.printf(w / 2, text_y, body_font, Color::BLACK, TextAlign::TOP_CENTER, "%s", line.c_str());
+          text_y += line_height;
+        }
+        it.rectangle(btn_left, btn_top, btn_right - btn_left, btn_bottom - btn_top, Color::BLACK);
+        it.printf(w / 2, btn_top + 18, id(font_connecting), Color::BLACK, TextAlign::TOP_CENTER, "CERRAR");
+      } else if (!id(controls_view)) {
         if (id(pending_controls_entry) || id(ha_connection_state) == 0) {
           it.image(240, 200, id(home_assistant_icon), ImageAlign::CENTER, Color::BLACK, Color::WHITE);
           it.printf(240, 370, id(font_connecting), Color::BLACK, TextAlign::TOP_CENTER, "CONECTANDO");

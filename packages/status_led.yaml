@@ -141,6 +141,22 @@ script:
           bool red_on = false;
           bool green_on = false;
 
+          if (id(notification_alert_active) && !id(status_led_sleep_pending) &&
+              !id(light_sleep_wake_recovery)) {
+            const uint32_t elapsed =
+                static_cast<uint32_t>(millis()) -
+                static_cast<uint32_t>(id(notification_alert_blink_phase_ms));
+            if (id(notification_alert_blink_on)) {
+              green_on = true;
+              if (elapsed >= 500) {
+                id(notification_alert_blink_on) = false;
+                id(notification_alert_blink_phase_ms) = static_cast<int>(millis());
+              }
+            } else if (elapsed >= 2000) {
+              id(notification_alert_blink_on) = true;
+              id(notification_alert_blink_phase_ms) = static_cast<int>(millis());
+            }
+          } else {
           switch (id(status_led_mode)) {
             case 1: {
               const uint32_t elapsed =
@@ -173,6 +189,7 @@ script:
             }
             default:
               break;
+          }
           }
 
           // A color preview owns the physical RGB LED temporarily. Keep computing
@@ -280,6 +297,6 @@ interval:
     then:
       - if:
           condition:
-            lambda: 'return !id(status_led_sleep_pending) && id(status_led_mode) >= 4;'
+            lambda: 'return !id(status_led_sleep_pending) && (id(status_led_mode) >= 4 || id(notification_alert_active));'
           then:
             - script.execute: status_led_update

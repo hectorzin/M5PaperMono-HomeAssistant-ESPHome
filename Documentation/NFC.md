@@ -1,5 +1,7 @@
 # NFC
 
+[English](NFC.md) | [Español](es/NFC.md)
+
 ## Hardware
 
 The ST25R3916 uses the main I²C bus:

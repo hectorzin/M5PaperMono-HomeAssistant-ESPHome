@@ -1,5 +1,7 @@
 # Touch and User Interaction
 
+[English](Touch_and_User_Interaction.md) | [Español](es/Touch_and_User_Interaction.md)
+
 The FT6336G touch panel uses calibration `x=5..475`, `y=5..795` and is polled every 50 ms. Touch reports activity, wakes light sleep, enables the active path, and may turn on the frontlight. BMI270 motion is the other activity source and can wake through M5PM1.
 
 Touching the dashboard requests entry to controls; if Wi-Fi/API/HA are not ready, entry remains pending until they recover. The top back area returns home. GPIO2/GPIO3 navigate controls pages, subject to the current multi-block/at-most-six-controls limitation described in [Rooms and Controls](Rooms_and_Controls.md). A single POWER-button click also returns Home while Controls or pending Controls is active. A short buzzer feedback pulse is generated for supported state-changing interactions; the buzzer is GPIO42 and the pulse is 25 ms at 8% output.

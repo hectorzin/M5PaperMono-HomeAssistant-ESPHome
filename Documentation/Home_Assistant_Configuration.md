@@ -1,5 +1,7 @@
 # Home Assistant Configuration
 
+[English](Home_Assistant_Configuration.md) | [Español](es/Home_Assistant_Configuration.md)
+
 ## Compile-time configuration
 
 Edit the device YAML created in ESPHome Device Builder for values substituted into the generated firmware (the repository example is `paper_mono.yaml`):

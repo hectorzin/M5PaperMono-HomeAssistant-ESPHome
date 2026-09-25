@@ -1,5 +1,7 @@
 # Power Management
 
+[English](Power_Management.md) | [Español](es/Power_Management.md)
+
 The device has two distinct low-power mechanisms: ESP32 light sleep, which can wake periodically without rebooting, and M5PM1 shutdown, which removes the ESP32 rail and requires a new boot. Every request to sleep goes through one pipeline. The current clock chooses the mode: outside quiet hours the device enters light sleep; inside quiet hours it uses PMIC shutdown.
 
 ```mermaid

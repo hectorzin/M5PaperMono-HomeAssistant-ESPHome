@@ -1,5 +1,7 @@
 # M5PaperMono-HomeAssistant
 
+[English](README.md) | [Español](README_ES.md)
+
 ESPHome firmware for the M5Stack PaperMono C153. It combines the 800×480 SSD1677 e-paper display, FT6336G touch panel, ST25R3916 NFC reader, BMI270 motion sensor, M5PM1 power-management IC, frontlight, and Home Assistant native API.
 
 The device presents a weather and energy dashboard, opens room-specific control pages, and can operate lights, switches, covers, climate devices, vacuums, and media players configured in `paper_mono.yaml`. Touch, motion, NFC cards, periodic refreshes, and quiet-hours power management are part of the normal runtime behavior.

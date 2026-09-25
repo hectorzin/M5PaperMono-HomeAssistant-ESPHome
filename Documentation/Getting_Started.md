@@ -1,5 +1,7 @@
 # Getting Started
 
+[English](Getting_Started.md) | [Español](es/Getting_Started.md)
+
 This is the recommended installation path for Home Assistant users. It uses ESPHome Device Builder and the shared package published on GitHub; cloning this repository or copying `packages/`, `components/`, `custom_components/`, or `external_components/` is not required.
 
 The default language is `language: "en"`. Set `language: "es"` to select Spanish. Changing the language requires recompiling and installing the firmware. ESPHome currently derives public entity IDs from visible `name:` values, so translated names can produce different `entity_id` values after changing language. Firmware-internal IDs remain stable in English, and user-provided Home Assistant `entity_id` values and `controls:` names are never translated.

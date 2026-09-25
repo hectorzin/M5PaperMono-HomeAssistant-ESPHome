@@ -1,5 +1,7 @@
 # Display and Refresh
 
+[English](Display_and_Refresh.md) | [Español](es/Display_and_Refresh.md)
+
 The custom driver is a fixed monochrome 800×480 SSD1677 implementation using the PaperMono OTP waveforms. SPI is write-only at 20 MHz. A PARTIAL refresh transfers the complete RAM1 framebuffer; logical dirty regions are currently retained only for logging and diagnostics and do not govern the FULL/PARTIAL decision.
 
 ## Policy

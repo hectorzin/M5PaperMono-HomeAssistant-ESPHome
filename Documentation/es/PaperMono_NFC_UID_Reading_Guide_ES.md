@@ -1,8 +1,8 @@
-# PaperMono NFC-A UID Reading Guide
+# Guía de lectura de UID NFC-A de PaperMono
 
-[English](PaperMono_NFC_UID_Reading_Guide_EN.md) | [Español](es/PaperMono_NFC_UID_Reading_Guide_ES.md)
+[English](../PaperMono_NFC_UID_Reading_Guide_EN.md) | [Español](PaperMono_NFC_UID_Reading_Guide_ES.md)
 
-The onboard ST25R3916 in PaperMono is connected as follows:
+El ST25R3916 integrado en PaperMono está conectado así:
 
 ```text
 I2C address: 0x50
@@ -12,15 +12,9 @@ I2C frequency: 400 kHz
 NFC power: M5IOE1 GPIO4, active high
 ```
 
-This document is the low-level PaperMono/UserDemo validation reference. The
-register tables below describe that UserDemo and are not an exact specification
-of the current firmware initialization. The current ESPHome firmware uses the
-same wiring and NFC-A transaction flow, but its `bus_main` is configured at
-100 kHz in `paper_mono.yaml`. The firmware integration details, low-power state
-machine, UID publication, and block navigation are documented in
-[NFC.md](NFC.md).
+Este documento es la referencia de validación de bajo nivel de PaperMono/UserDemo. Las tablas de registros siguientes describen ese UserDemo y no son una especificación exacta de la inicialización actual del firmware. El firmware ESPHome actual usa el mismo cableado y flujo de transacciones NFC-A, pero su `bus_main` está configurado a 100 kHz en `paper_mono.yaml`. Los detalles de integración del firmware, la máquina de estados de bajo consumo, la publicación del UID y la navegación por bloques están documentados en [NFC.md](NFC.md).
 
-The following sequence has been verified:
+La siguiente secuencia ha sido verificada:
 
 ```text
 REQA -> ATQA       Success
@@ -29,11 +23,11 @@ REQA -> ATQA       Success
 95 20 -> UID CL2  Success
 ```
 
-## 1. Register and command sequence from REQA to CL1
+## 1. Secuencia de registros y comandos de REQA a CL1
 
-### NFC-A initialization
+### Inicialización NFC-A
 
-The main configuration verified on PaperMono is:
+La configuración principal verificada en PaperMono es:
 
 ```text
 REG 0x00 / 0x01          0x10 / 0x84
@@ -61,7 +55,7 @@ Space-B 0x0C              0x47
 Space-B 0x0D              0x00
 ```
 
-Initialization Direct Commands:
+Comandos directos de inicialización:
 
 ```text
 CMD_STOP_ALL_ACTIVITIES   0xC2
@@ -85,7 +79,7 @@ CMD_CLEAR_FIFO            0xDB
 CMD_TRANSMIT_REQA         0xC6
 ```
 
-Wait for `RXE`, then read `REG 0x1E/0x1F` to obtain the FIFO length, and use `0x9F` to read the 2-byte ATQA response.
+Espera a `RXE`, después lee `REG 0x1E/0x1F` para obtener la longitud del FIFO y usa `0x9F` para leer la respuesta ATQA de 2 bytes.
 
 ### CL1: 93 20 -> UID
 
@@ -105,7 +99,7 @@ REG 0x22 / 0x23           0x00 0x10  2 bytes / 16 bits
 CMD_TRANSMIT_WITHOUT_CRC  0xC5
 ```
 
-Wait for `RXE` or `COL`, then read:
+Espera a `RXE` o `COL` y después lee:
 
 ```text
 REG 0x1E / 0x1F           FIFO status
@@ -113,21 +107,21 @@ REG 0x20                  COLLISION_DISPLAY
 CMD_READ_FIFO             0x9F
 ```
 
-With a single tag, the normal response is 5 bytes:
+Con una sola tarjeta, la respuesta normal es de 5 bytes:
 
 ```text
 UID0 UID1 UID2 UID3 BCC
 ```
 
-BCC check:
+Comprobación BCC:
 
 ```text
 UID0 ^ UID1 ^ UID2 ^ UID3 == BCC
 ```
 
-## 2. Does the receiver need to be reconfigured when switching from REQA to CL1?
+## 2. ¿Es necesario reconfigurar el receptor al cambiar de REQA a CL1?
 
-There is no need to rewrite the complete receiver configuration, RX gain, or correlator settings. The following configuration only needs to be applied once during NFC-A initialization:
+No es necesario reescribir toda la configuración del receptor, la ganancia RX ni los ajustes del correlador. La siguiente configuración solo debe aplicarse una vez durante la inicialización NFC-A:
 
 ```text
 REG 0x0B                  0x08
@@ -138,7 +132,7 @@ Space-B 0x0C              0x47
 Space-B 0x0D              0x00
 ```
 
-When switching from REQA to the anti-collision stage, the following settings need to be changed or read:
+Al cambiar de REQA a la fase de anticollision hay que cambiar o leer los siguientes ajustes:
 
 ```text
 REG 0x05                  antcl = 1
@@ -149,14 +143,14 @@ REG 0x1E / 0x1F           Read FIFO status
 REG 0x20                  Read collision position
 ```
 
-For the SELECT stage, switch back to the normal NFC-A settings:
+Para la fase SELECT, vuelve a los ajustes NFC-A normales:
 
 ```text
 REG 0x05                  0x00
 REG 0x0A bit7             0
 ```
 
-Then transmit:
+Después transmite:
 
 ```text
 93 70 UID0 UID1 UID2 UID3 BCC
@@ -164,25 +158,25 @@ REG 0x22 / 0x23           7 bytes / 56 bits
 CMD_TRANSMIT_WITH_CRC     0xC4
 ```
 
-Read the returned SAK. If `SAK & 0x04` is non-zero, for example `SAK=0x24`, CL2 must also be executed:
+Lee el SAK devuelto. Si `SAK & 0x04` no es cero, por ejemplo `SAK=0x24`, también debe ejecutarse CL2:
 
 ```text
 95 20 -> CL2 UID
 95 70 -> CL2 SELECT
 ```
 
-A 10-byte UID also requires CL3:
+Un UID de 10 bytes también requiere CL3:
 
 ```text
 97 20
 97 70
 ```
 
-## 3. Does PaperMono require any additional special configuration?
+## 3. ¿Requiere PaperMono alguna configuración especial adicional?
 
-No additional hidden NFC-A RF configuration specific to PaperMono has been identified beyond the standard `M5Unit-NFC` procedure.
+No se ha identificado ninguna configuración RF NFC-A oculta específica de PaperMono más allá del procedimiento estándar de `M5Unit-NFC`.
 
-The PaperMono-specific details are mainly related to the hardware connections:
+Los detalles específicos de PaperMono están principalmente relacionados con las conexiones de hardware:
 
 ```text
 ST25R3916 uses I2C address 0x50
@@ -191,21 +185,21 @@ The internal I2C bus uses GPIO47/GPIO48
 UserDemo uses 400 kHz I2C
 ```
 
-The PaperMono UserDemo does not use the dedicated ST25R3916 IRQ pin. Instead, it polls the IRQ status registers over I2C. Therefore, an ESPHome component can also use polling. The current firmware integration documented in [NFC.md](NFC.md) additionally uses the ST25R3916 IRQ line on ESP32 GPIO6 to start the low-power wake/confirmation path.
+El UserDemo de PaperMono no usa el pin IRQ dedicado del ST25R3916. En su lugar, sondea los registros de estado IRQ por I2C. Por tanto, un componente ESPHome también puede usar sondeo. La integración actual del firmware documentada en [NFC.md](NFC.md) usa además la línea IRQ del ST25R3916 en ESP32 GPIO6 para iniciar la ruta de wake/confirmación de bajo consumo.
 
-With a single tag, the absence of `COL` is normal. The key items to check are `RXE`, FIFO length, error IRQs, and `COLLISION_DISPLAY`.
+Con una sola tarjeta, la ausencia de `COL` es normal. Los elementos clave que hay que comprobar son `RXE`, la longitud del FIFO, las IRQ de error y `COLLISION_DISPLAY`.
 
-## 4. Source code paths
+## 4. Rutas de código fuente
 
-### PaperMono raw-I2C validation demo
+### Demo de validación raw-I2C de PaperMono
 
-Relative path in the provided source project:
+Ruta relativa en el proyecto fuente proporcionado:
 
 ```text
 main/NFC_Demo.cpp
 ```
 
-Main functions:
+Funciones principales:
 
 ```text
 nfc_demo_start()       Starts the demo
@@ -219,9 +213,9 @@ read_uid_levels()      Handles UID cascade levels
 scan_task()            Polling and display state machine
 ```
 
-### Original M5Unit-NFC implementation
+### Implementación original de M5Unit-NFC
 
-The following paths refer to the original `M5Unit-NFC` source tree and are provided for reference. These files are not included in the standalone PaperMono demo project attached separately.
+Las siguientes rutas se refieren al árbol de código fuente original de `M5Unit-NFC` y se proporcionan como referencia. Estos archivos no están incluidos en el proyecto standalone de la demo de PaperMono adjunto por separado.
 
 ```text
 components/M5Unit-NFC/src/unit/unit_ST25R3916_nfca.cpp
@@ -231,7 +225,7 @@ components/M5Unit-NFC/src/nfc/layer/a/nfc_layer_a.cpp
 components/M5Unit-NFC/src/nfc/layer/a/nfc_layer_a_ST25R3916.cpp
 ```
 
-Corresponding functions:
+Funciones correspondientes:
 
 ```text
 configure_nfc_a()

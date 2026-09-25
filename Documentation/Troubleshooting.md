@@ -1,5 +1,7 @@
 # Troubleshooting
 
+[English](Troubleshooting.md) | [Español](es/Troubleshooting.md)
+
 ## No Home Assistant connection
 
 Check `wifi_ssid`, `wifi_password`, DHCP/network reachability, and ESPHome logs. HEAD uses DHCP; a fixed address exists only if the user adds an optional `manual_ip` customization. The native API state is authoritative for controls and alerts. RAM-cached data may still render after light sleep, but actions are blocked until the API is ready.

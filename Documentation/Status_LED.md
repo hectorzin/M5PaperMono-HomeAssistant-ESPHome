@@ -1,5 +1,7 @@
 # Status LED
 
+[English](Status_LED.md) | [Español](es/Status_LED.md)
+
 The status hardware has a red M5PM1 LED and green/blue M5IOE1 channels.
 
 | State | LED | Pattern | Meaning |

@@ -324,8 +324,16 @@ touchscreen:
                 }
               } else if (light_on && local_y >= 180 && local_y < 225) {
                 if (id(controls_id).color_edit_mode_at(slot)) {
-                  if (local_x < 69) id(controls_negative).execute(slot);
-                  else if (local_x >= 138) id(controls_positive).execute(slot);
+                  if (local_x < 69) {
+                    id(controls_negative).execute(slot);
+                  } else if (local_x < 138) {
+                    // Middle bulb: leave RGB preview, then toggle like brightness mode.
+                    ESP_LOGI("control", "Controls action: slot=%d light toggle (RGB)", slot);
+                    id(control_light_color_exit).execute(slot);
+                    id(control_light_toggle).execute(slot);
+                  } else {
+                    id(controls_positive).execute(slot);
+                  }
                   action_detected = true;
                 } else if (local_x < 69) {
                   ESP_LOGI("control", "Controls action: slot=2 light brightness_down");

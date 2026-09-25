@@ -143,6 +143,13 @@ class PaperMonoActivityComponent : public Component {
   }
   void set_status_led_preview_slot(globals::GlobalsComponent<int> *slot) { this->status_led_preview_slot_ = slot; }
   void set_status_led_blue_switch(switch_::Switch *blue) { this->status_led_blue_switch_ = blue; }
+  void set_status_led_green_switch(switch_::Switch *green) { this->status_led_green_switch_ = green; }
+  void set_status_led_red_hw_on(globals::GlobalsComponent<bool> *value) { this->status_led_red_hw_on_ = value; }
+  void set_status_led_green_hw_on(globals::GlobalsComponent<bool> *value) { this->status_led_green_hw_on_ = value; }
+  void set_status_led_blue_hw_on(globals::GlobalsComponent<bool> *value) { this->status_led_blue_hw_on_ = value; }
+  void set_status_led_release_color_preview(script::Script<> *release) {
+    this->status_led_release_color_preview_ = release;
+  }
   void set_sleep_visual_active(globals::GlobalsComponent<bool> *value) {
     this->sleep_visual_active_ = value;
   }
@@ -228,6 +235,7 @@ class PaperMonoActivityComponent : public Component {
   bool sleep_visual_active_value_() const;
   void commit_sleep_visual_refresh_(const char *source);
   void apply_status_led_sleep_pending_(bool pending);
+  void release_status_led_color_preview_();
   void turn_off_frontlight_for_sleep_();
   bool sleep_timeout_expired_() const;
   bool is_sleep_pipeline_active_() const { return this->sleep_phase_ != SleepPhase::NONE; }
@@ -305,6 +313,11 @@ class PaperMonoActivityComponent : public Component {
   globals::GlobalsComponent<bool> *status_led_sleep_pending_{nullptr};
   globals::GlobalsComponent<int> *status_led_preview_slot_{nullptr};
   switch_::Switch *status_led_blue_switch_{nullptr};
+  switch_::Switch *status_led_green_switch_{nullptr};
+  globals::GlobalsComponent<bool> *status_led_red_hw_on_{nullptr};
+  globals::GlobalsComponent<bool> *status_led_green_hw_on_{nullptr};
+  globals::GlobalsComponent<bool> *status_led_blue_hw_on_{nullptr};
+  script::Script<> *status_led_release_color_preview_{nullptr};
   globals::GlobalsComponent<bool> *sleep_visual_active_{nullptr};
   globals::GlobalsComponent<bool> *quiet_hours_user_override_{nullptr};
   globals::GlobalsComponent<float> *battery_display_level_{nullptr};

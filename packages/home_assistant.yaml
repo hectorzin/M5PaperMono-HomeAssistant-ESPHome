@@ -742,12 +742,26 @@ script:
           id(controls_id).set_color_edit_mode(slot, false);
           id(controls_id).set_color_preview_started(slot, false);
           if (id(active_color_preview_slot) == slot) id(active_color_preview_slot) = -1;
+          // Preview wrote RGB hardware directly. Blank all channels and align the
+          // status caches to OFF, then let status_led_update restore the normal
+          // policy (alerts / manual HA override / off).
+          id(m5pm1_pmu).set_status_red_led(false);
+          id(status_led_green).turn_off();
           id(color_preview_blue).turn_off();
-          // The preview wrote hardware directly; force the normal policy to write
-          // both cached channels again on the next status update.
-          id(status_led_red_hw_on) = !id(status_led_red_hw_on);
-          id(status_led_green_hw_on) = !id(status_led_green_hw_on);
+          id(status_led_red_hw_on) = false;
+          id(status_led_green_hw_on) = false;
+          id(status_led_blue_hw_on) = false;
       - script.execute: status_led_update
+  - id: status_led_release_color_preview
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(active_color_preview_slot) >= 0;'
+          then:
+            - script.execute:
+                id: control_light_color_exit
+                slot: !lambda 'return id(active_color_preview_slot);'
   - id: controls_page_cleanup
     then:
       - lambda: |-

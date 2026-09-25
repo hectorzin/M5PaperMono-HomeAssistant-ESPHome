@@ -320,7 +320,9 @@ script:
 
           // A color preview owns the physical RGB LED temporarily. Keep computing
           // the normal policy above, but defer all physical status writes.
-          if (id(active_color_preview_slot) < 0) {
+          // While sleep is pending, leave channels off — do not re-apply status
+          // colors after apply_status_led_sleep_pending_ blanked them.
+          if (id(active_color_preview_slot) < 0 && !id(status_led_sleep_pending)) {
             if (red_on != id(status_led_red_hw_on)) {
               id(m5pm1_pmu).set_status_red_led(red_on);
               id(status_led_red_hw_on) = red_on;
@@ -338,7 +340,7 @@ script:
               if (blue_on) id(color_preview_blue).turn_on(); else id(color_preview_blue).turn_off();
               id(status_led_blue_hw_on) = blue_on;
             }
-          } else {
+          } else if (id(active_color_preview_slot) >= 0) {
             // Preview owns all RGB channels. Do not leave the status cache
             // claiming ownership of blue when the preview is later released.
             id(status_led_blue_hw_on) = false;

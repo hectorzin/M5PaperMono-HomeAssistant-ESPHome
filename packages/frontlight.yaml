@@ -31,6 +31,11 @@ papermono_activity:
   status_led_sleep_pending: status_led_sleep_pending
   status_led_preview_slot: active_color_preview_slot
   status_led_blue_switch: color_preview_blue
+  status_led_green_switch: status_led_green
+  status_led_red_hw_on: status_led_red_hw_on
+  status_led_green_hw_on: status_led_green_hw_on
+  status_led_blue_hw_on: status_led_blue_hw_on
+  status_led_release_color_preview: status_led_release_color_preview
   sleep_visual_active: sleep_visual_active
   quiet_hours_user_override: quiet_hours_user_override
   battery_display_level: paper_mono_battery_display_level

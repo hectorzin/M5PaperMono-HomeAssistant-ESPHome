@@ -844,13 +844,41 @@ void PaperMonoActivityComponent::apply_status_led_sleep_pending_(bool pending) {
   if (!pending || this->pmu_ == nullptr) {
     return;
   }
-  // Release only status-LED-owned channels; RGB previews retain ownership.
-  if (this->status_led_preview_slot_ == nullptr || this->status_led_preview_slot_->value() < 0) {
-    this->pmu_->set_status_red_led(false);
-    if (this->status_led_blue_switch_ != nullptr) {
-      this->status_led_blue_switch_->turn_off();
-    }
+  // Sleep blanks every status channel. Preview ownership must already be released
+  // by release_status_led_color_preview_() so this path never skips a stuck RGB
+  // preview color.
+  this->pmu_->set_status_red_led(false);
+  if (this->status_led_green_switch_ != nullptr) {
+    this->status_led_green_switch_->turn_off();
   }
+  if (this->status_led_blue_switch_ != nullptr) {
+    this->status_led_blue_switch_->turn_off();
+  }
+  // Keep status caches aligned with the blanked hardware so a later
+  // status_led_update after wake rewrites any channel that should be on.
+  if (this->status_led_red_hw_on_ != nullptr) {
+    this->status_led_red_hw_on_->value() = false;
+  }
+  if (this->status_led_green_hw_on_ != nullptr) {
+    this->status_led_green_hw_on_->value() = false;
+  }
+  if (this->status_led_blue_hw_on_ != nullptr) {
+    this->status_led_blue_hw_on_->value() = false;
+  }
+}
+
+void PaperMonoActivityComponent::release_status_led_color_preview_() {
+  if (this->status_led_preview_slot_ == nullptr || this->status_led_preview_slot_->value() < 0) {
+    return;
+  }
+  ESP_LOGI(TAG, "Status LED: releasing RGB color preview (slot=%d)", this->status_led_preview_slot_->value());
+  if (this->status_led_release_color_preview_ != nullptr) {
+    // Clears edit mode + preview slot, then status_led_update restores policy.
+    this->status_led_release_color_preview_->execute();
+    return;
+  }
+  // Fallback: drop ownership only. Callers that blank for sleep still turn LEDs off.
+  this->status_led_preview_slot_->value() = -1;
 }
 
 void PaperMonoActivityComponent::turn_off_frontlight_for_sleep_() {
@@ -899,6 +927,7 @@ void PaperMonoActivityComponent::request_sleep_(PowerTransitionSource source, bo
            this->ha_connection_state_ != nullptr ? this->ha_connection_state_->value() : -1);
 
   const bool leaving_controls = this->in_controls_view_();
+  this->release_status_led_color_preview_();
   this->prepare_controls_exit_for_sleep_();
   this->apply_status_led_sleep_pending_(true);
 
@@ -1809,6 +1838,8 @@ void PaperMonoActivityComponent::apply_frontlight_(bool on, ActivitySource sourc
     return;
   }
 
+  // Leaving the lit controls context: temporary RGB preview must not linger.
+  this->release_status_led_color_preview_();
   this->set_frontlight_level_(false, this->frontlight_brightness_percent_);
 }
 
@@ -1831,6 +1862,7 @@ void PaperMonoActivityComponent::set_frontlight_from_ha(bool on, float brightnes
   const uint8_t brightness = this->on_brightness_percent_();
   if (!on || brightness == 0) {
     this->activity_active_ = false;
+    this->release_status_led_color_preview_();
     this->set_frontlight_level_(false, brightness);
     ESP_LOGI(TAG, "Frontlight: OFF (source=home_assistant)");
     return;

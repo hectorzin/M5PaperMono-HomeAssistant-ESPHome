@@ -180,6 +180,10 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+  - id: status_led_force_physical_apply
+    type: bool
+    restore_value: no
+    initial_value: 'false'
 
 script:
   - id: status_led_update
@@ -187,8 +191,13 @@ script:
     then:
       - lambda: |-
           static const char *const MODE_NAMES[] = {
-              "OFF", "LOW_BATTERY", "EXTERNAL_POWER", "EXTERNAL_POWER_FULL",
+              "OFF", "LOW_BATTERY", "EXTERNAL_POWER_CHARGING", "EXTERNAL_POWER_CHARGED",
               "LOW_BATTERY_ALERT", "HA_ALERT", "LOW_BATTERY_AND_HA_ALERT"};
+
+          const bool force_physical = id(status_led_force_physical_apply);
+          if (force_physical) {
+            id(status_led_force_physical_apply) = false;
+          }
 
           const bool external_power = id(paper_mono_external_power).has_state() &&
                                       id(paper_mono_external_power).state;
@@ -318,32 +327,76 @@ script:
           }
           }
 
+          char display_text[8];
+          if (display_level_valid) {
+            snprintf(display_text, sizeof(display_text), "%d", display_level);
+          } else {
+            snprintf(display_text, sizeof(display_text), "n/a");
+          }
+
+          ESP_LOGI("status_led",
+                   "Policy: ext=%s display=%s mode=%d want R=%d G=%d B=%d cache R=%d G=%d B=%d "
+                   "sleep=%d preview=%d force=%s",
+                   external_power ? "YES" : "NO", display_text, desired_mode, red_on, green_on, blue_on,
+                   id(status_led_red_hw_on), id(status_led_green_hw_on), id(status_led_blue_hw_on),
+                   id(status_led_sleep_pending), id(active_color_preview_slot),
+                   force_physical ? "yes" : "no");
+
           // A color preview owns the physical RGB LED temporarily. Keep computing
           // the normal policy above, but defer all physical status writes.
           // While sleep is pending, leave channels off — do not re-apply status
           // colors after apply_status_led_sleep_pending_ blanked them.
-          if (id(active_color_preview_slot) < 0 && !id(status_led_sleep_pending)) {
-            if (red_on != id(status_led_red_hw_on)) {
-              id(m5pm1_pmu).set_status_red_led(red_on);
-              id(status_led_red_hw_on) = red_on;
+          if (id(active_color_preview_slot) >= 0) {
+            ESP_LOGI("status_led", "Physical apply skipped: RGB preview owns channels");
+            id(status_led_blue_hw_on) = false;
+          } else if (id(status_led_sleep_pending)) {
+            ESP_LOGI("status_led", "Physical apply skipped: sleep blanking active");
+          } else {
+            const bool apply_red = force_physical || red_on != id(status_led_red_hw_on);
+            if (apply_red) {
+              const bool red_ok = id(m5pm1_pmu).set_status_red_led(red_on);
+              ESP_LOGI("status_led", "Red apply: want=%s cache=%s force=%s i2c=%s",
+                       red_on ? "ON" : "OFF", id(status_led_red_hw_on) ? "ON" : "OFF",
+                       force_physical ? "yes" : "no", red_ok ? "ok" : "fail");
+              if (red_ok) {
+                id(status_led_red_hw_on) = red_on;
+              }
+            } else {
+              ESP_LOGD("status_led", "Red apply skipped: cache already matches want=%s",
+                       red_on ? "ON" : "OFF");
             }
-            if (green_on != id(status_led_green_hw_on)) {
+
+            const bool apply_green = force_physical || green_on != id(status_led_green_hw_on);
+            if (apply_green) {
               if (green_on) {
                 id(status_led_green).turn_on();
               } else {
                 id(status_led_green).turn_off();
               }
-              ESP_LOGI("status_led", "Status LED green: %s", green_on ? "ON" : "OFF");
+              ESP_LOGI("status_led", "Green apply: want=%s cache=%s force=%s",
+                       green_on ? "ON" : "OFF", id(status_led_green_hw_on) ? "ON" : "OFF",
+                       force_physical ? "yes" : "no");
               id(status_led_green_hw_on) = green_on;
+            } else {
+              ESP_LOGD("status_led", "Green apply skipped: cache already matches want=%s",
+                       green_on ? "ON" : "OFF");
             }
-            if (blue_on != id(status_led_blue_hw_on)) {
-              if (blue_on) id(color_preview_blue).turn_on(); else id(color_preview_blue).turn_off();
+
+            const bool apply_blue = force_physical || blue_on != id(status_led_blue_hw_on);
+            if (apply_blue) {
+              if (blue_on) {
+                id(color_preview_blue).turn_on();
+              } else {
+                id(color_preview_blue).turn_off();
+              }
+              ESP_LOGI("status_led", "Blue apply: want=%s cache=%s force=%s",
+                       blue_on ? "ON" : "OFF", id(status_led_blue_hw_on) ? "ON" : "OFF",
+                       force_physical ? "yes" : "no");
               id(status_led_blue_hw_on) = blue_on;
+            } else {
+              ESP_LOGD("status_led", "Blue apply skipped: cache already matches want=%s",
+                       blue_on ? "ON" : "OFF");
             }
-          } else if (id(active_color_preview_slot) >= 0) {
-            // Preview owns all RGB channels. Do not leave the status cache
-            // claiming ownership of blue when the preview is later released.
-            id(status_led_blue_hw_on) = false;
           }
       - if:
           condition:

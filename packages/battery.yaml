@@ -29,6 +29,7 @@ binary_sensor:
       id: paper_mono_external_power
       on_state:
         - lambda: |-
+            id(status_led_force_physical_apply) = true;
             id(papermono_activity_hub).on_external_power_changed(x);
         - script.execute: paper_mono_battery_update_display
 
@@ -64,20 +65,19 @@ script:
     mode: queued
     then:
       - lambda: |-
-          if (id(paper_mono_battery_sample_count) == 0)
-            return;
-
-          const float average = id(paper_mono_battery_sample_sum) /
-                                id(paper_mono_battery_sample_count);
-          float rounded = floorf(average + 0.5f);
-          const bool external_power = id(paper_mono_external_power).has_state() &&
-                                      id(paper_mono_external_power).state;
-          if (!external_power && !std::isnan(id(paper_mono_battery_display_level)) &&
-              rounded > id(paper_mono_battery_display_level))
-            rounded = id(paper_mono_battery_display_level);
-          id(paper_mono_battery_display_level) = rounded;
-          if (external_power)
-            id(papermono_activity_hub).mark_dashboard_dirty();
+          if (id(paper_mono_battery_sample_count) != 0) {
+            const float average = id(paper_mono_battery_sample_sum) /
+                                  id(paper_mono_battery_sample_count);
+            float rounded = floorf(average + 0.5f);
+            const bool external_power = id(paper_mono_external_power).has_state() &&
+                                        id(paper_mono_external_power).state;
+            if (!external_power && !std::isnan(id(paper_mono_battery_display_level)) &&
+                rounded > id(paper_mono_battery_display_level))
+              rounded = id(paper_mono_battery_display_level);
+            id(paper_mono_battery_display_level) = rounded;
+            if (external_power)
+              id(papermono_activity_hub).mark_dashboard_dirty();
+          }
       - script.execute: status_led_update
 
 globals:

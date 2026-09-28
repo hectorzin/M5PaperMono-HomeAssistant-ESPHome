@@ -34,6 +34,7 @@ CONF_STATUS_LED_RED_HW_ON = "status_led_red_hw_on"
 CONF_STATUS_LED_GREEN_HW_ON = "status_led_green_hw_on"
 CONF_STATUS_LED_BLUE_HW_ON = "status_led_blue_hw_on"
 CONF_STATUS_LED_RELEASE_COLOR_PREVIEW = "status_led_release_color_preview"
+CONF_STATUS_LED_UPDATE = "status_led_update"
 CONF_SLEEP_VISUAL_ACTIVE = "sleep_visual_active"
 CONF_QUIET_HOURS_USER_OVERRIDE = "quiet_hours_user_override"
 CONF_BATTERY_DISPLAY_LEVEL = "battery_display_level"
@@ -90,6 +91,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_STATUS_LED_GREEN_HW_ON): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_STATUS_LED_BLUE_HW_ON): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_STATUS_LED_RELEASE_COLOR_PREVIEW): cv.use_id(script.Script),
+        cv.Required(CONF_STATUS_LED_UPDATE): cv.use_id(script.Script),
         cv.Required(CONF_SLEEP_VISUAL_ACTIVE): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_QUIET_HOURS_USER_OVERRIDE): cv.use_id(globals.GlobalsComponent),
         cv.Required(CONF_BATTERY_DISPLAY_LEVEL): cv.use_id(globals.GlobalsComponent),
@@ -133,6 +135,7 @@ async def to_code(config):
     status_led_green_hw_on = await cg.get_variable(config[CONF_STATUS_LED_GREEN_HW_ON])
     status_led_blue_hw_on = await cg.get_variable(config[CONF_STATUS_LED_BLUE_HW_ON])
     status_led_release_color_preview = await cg.get_variable(config[CONF_STATUS_LED_RELEASE_COLOR_PREVIEW])
+    status_led_update = await cg.get_variable(config[CONF_STATUS_LED_UPDATE])
     sleep_visual_active = await cg.get_variable(config[CONF_SLEEP_VISUAL_ACTIVE])
     quiet_hours_user_override = await cg.get_variable(config[CONF_QUIET_HOURS_USER_OVERRIDE])
     battery_display_level = await cg.get_variable(config[CONF_BATTERY_DISPLAY_LEVEL])
@@ -169,6 +172,7 @@ async def to_code(config):
     cg.add(var.set_status_led_green_hw_on(status_led_green_hw_on))
     cg.add(var.set_status_led_blue_hw_on(status_led_blue_hw_on))
     cg.add(var.set_status_led_release_color_preview(status_led_release_color_preview))
+    cg.add(var.set_status_led_update(status_led_update))
     cg.add(var.set_sleep_visual_active(sleep_visual_active))
     cg.add(var.set_quiet_hours_user_override(quiet_hours_user_override))
     cg.add(var.set_battery_display_level(battery_display_level))

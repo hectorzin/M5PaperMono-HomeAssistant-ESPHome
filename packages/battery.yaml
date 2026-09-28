@@ -28,8 +28,9 @@ binary_sensor:
       name: "${external_power_name}"
       id: paper_mono_external_power
       on_state:
+        - lambda: |-
+            id(papermono_activity_hub).on_external_power_changed(x);
         - script.execute: paper_mono_battery_update_display
-        - script.execute: status_led_update
 
 script:
   - id: paper_mono_battery_ingest_sample

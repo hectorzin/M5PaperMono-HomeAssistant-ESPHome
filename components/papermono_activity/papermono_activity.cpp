@@ -211,8 +211,8 @@ void PaperMonoActivityComponent::loop() {
 
   // Sleep timeout is evaluated before any periodic/internal work. Once the
   // request is made, the pending flag prevents normal work from re-arming it.
-  if (!this->is_sleep_pipeline_active_() && this->periodic_wake_phase_ == PeriodicWakePhase::NONE &&
-      this->sleep_timeout_expired_()) {
+  if (!this->external_power_present_() && !this->is_sleep_pipeline_active_() &&
+      this->periodic_wake_phase_ == PeriodicWakePhase::NONE && this->sleep_timeout_expired_()) {
     if (!this->sleep_timeout_logged_) {
       ESP_LOGI(TAG, "Sleep timeout reached after %u s inactivity", this->sleep_timeout_ms_() / 1000U);
       this->sleep_timeout_logged_ = true;
@@ -837,11 +837,57 @@ void PaperMonoActivityComponent::set_sleep_visual_(bool active) {
   }
 }
 
+bool PaperMonoActivityComponent::external_power_present_() const {
+  if (this->pmu_ != nullptr && this->pmu_->is_external_power_present()) {
+    return true;
+  }
+  return this->external_power_ != nullptr && this->external_power_->state;
+}
+
+void PaperMonoActivityComponent::restore_status_led_policy_() {
+  if (this->status_led_update_ != nullptr) {
+    this->status_led_update_->execute();
+  }
+}
+
+void PaperMonoActivityComponent::on_external_power_changed(bool connected) {
+  if (connected) {
+    ESP_LOGI(TAG, "External power connected");
+    if (this->is_sleep_pipeline_active_()) {
+      this->cancel_sleep_pipeline_();
+    } else if (this->status_led_sleep_pending_ != nullptr && this->status_led_sleep_pending_->value()) {
+      this->apply_status_led_sleep_pending_(false);
+    }
+#ifdef USE_WIFI
+    if (wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_disabled()) {
+      ESP_LOGI(TAG, "Enabling WiFi after external power connected");
+      wifi::global_wifi_component->enable();
+    }
+#endif
+    return;
+  }
+
+  ESP_LOGI(TAG, "External power disconnected");
+  const uint32_t now = millis();
+  this->last_activity_ms_ = now;
+  this->sleep_eligible_activity_ms_ = now;
+  this->sleep_timeout_logged_ = false;
+}
+
 void PaperMonoActivityComponent::apply_status_led_sleep_pending_(bool pending) {
+  const bool was_pending =
+      this->status_led_sleep_pending_ != nullptr && this->status_led_sleep_pending_->value();
   if (this->status_led_sleep_pending_ != nullptr) {
     this->status_led_sleep_pending_->value() = pending;
   }
-  if (!pending || this->pmu_ == nullptr) {
+  if (pending) {
+    if (this->pmu_ == nullptr) {
+      return;
+    }
+  } else {
+    if (was_pending) {
+      this->restore_status_led_policy_();
+    }
     return;
   }
   // Sleep blanks every status channel. Preview ownership must already be released
@@ -905,6 +951,11 @@ void PaperMonoActivityComponent::commit_sleep_visual_refresh_(const char *source
 }
 
 void PaperMonoActivityComponent::request_sleep_(PowerTransitionSource source, bool force_quiet_hours) {
+  if (this->external_power_present_()) {
+    ESP_LOGI(TAG, "Sleep request ignored: external power present source=%s",
+             power_source_to_string_(source));
+    return;
+  }
   if (this->is_sleep_pipeline_active_()) {
     ESP_LOGI(TAG, "Sleep request ignored: pipeline already active source=%s mode=%s",
              power_source_to_string_(this->pending_power_source_), sleep_mode_to_string_(this->pending_sleep_mode_));
@@ -1127,7 +1178,7 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_hours
   if (this->is_sleep_pipeline_active_()) {
     return;
   }
-  if (this->sleep_timeout_expired_()) {
+  if (this->sleep_timeout_expired_() && !this->external_power_present_()) {
     this->request_sleep_(PowerTransitionSource::SLEEP_TIMEOUT);
     return;
   }
@@ -1182,7 +1233,7 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_hours
     this->last_periodic_bucket_ = bucket;
   }
 
-  if (quiet_hours_idle) {
+  if (quiet_hours_idle && !this->external_power_present_()) {
     ESP_LOGI(TAG, "Scheduler /%u: requesting sleep (quiet hours, no new activity)",
              this->screensaver_refresh_minutes_());
     this->request_sleep_(PowerTransitionSource::SCHEDULER);
@@ -1685,6 +1736,9 @@ void PaperMonoActivityComponent::enter_light_sleep_() {
   ESP_LOGI(TAG, "  wake_cause=%s", wakeup_cause_to_string_(cause));
 
   this->handle_light_sleep_wake_(cause, timer_reason);
+  if (!this->is_sleep_pipeline_active_()) {
+    this->apply_status_led_sleep_pending_(false);
+  }
 }
 
 bool PaperMonoActivityComponent::abort_light_sleep_entry_(bool keep_pending) {

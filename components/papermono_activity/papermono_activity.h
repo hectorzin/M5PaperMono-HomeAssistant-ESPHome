@@ -150,6 +150,7 @@ class PaperMonoActivityComponent : public Component {
   void set_status_led_release_color_preview(script::Script<> *release) {
     this->status_led_release_color_preview_ = release;
   }
+  void set_status_led_update(script::Script<> *update) { this->status_led_update_ = update; }
   void set_sleep_visual_active(globals::GlobalsComponent<bool> *value) {
     this->sleep_visual_active_ = value;
   }
@@ -208,6 +209,7 @@ class PaperMonoActivityComponent : public Component {
 
   // Clock-aligned timer handling for quiet-hours and periodic light-sleep wakes.
   void on_screensaver_tick();
+  void on_external_power_changed(bool connected);
 
   void request_sleep_now(const std::string &wake_at);
   void request_shutdown_until(const std::string &wake_at);
@@ -235,7 +237,9 @@ class PaperMonoActivityComponent : public Component {
   bool sleep_visual_active_value_() const;
   void commit_sleep_visual_refresh_(const char *source);
   void apply_status_led_sleep_pending_(bool pending);
+  void restore_status_led_policy_();
   void release_status_led_color_preview_();
+  bool external_power_present_() const;
   void turn_off_frontlight_for_sleep_();
   bool sleep_timeout_expired_() const;
   bool is_sleep_pipeline_active_() const { return this->sleep_phase_ != SleepPhase::NONE; }
@@ -318,6 +322,7 @@ class PaperMonoActivityComponent : public Component {
   globals::GlobalsComponent<bool> *status_led_green_hw_on_{nullptr};
   globals::GlobalsComponent<bool> *status_led_blue_hw_on_{nullptr};
   script::Script<> *status_led_release_color_preview_{nullptr};
+  script::Script<> *status_led_update_{nullptr};
   globals::GlobalsComponent<bool> *sleep_visual_active_{nullptr};
   globals::GlobalsComponent<bool> *quiet_hours_user_override_{nullptr};
   globals::GlobalsComponent<float> *battery_display_level_{nullptr};

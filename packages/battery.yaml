@@ -76,6 +76,8 @@ script:
               rounded > id(paper_mono_battery_display_level))
             rounded = id(paper_mono_battery_display_level);
           id(paper_mono_battery_display_level) = rounded;
+          if (external_power)
+            id(papermono_activity_hub).mark_dashboard_dirty();
       - script.execute: status_led_update
 
 globals:

@@ -5,6 +5,9 @@ text_sensor:
     id: ha_weather_state
     entity_id: ${ha_weather_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_notification_text
     entity_id: ${ha_notification_text_entity}
@@ -25,6 +28,7 @@ text_sensor:
                 id(epaper_display).request_refresh(
                     papermono_epaper::RefreshPolicy::AUTOMATIC,
                     papermono_epaper::RefreshKind::NORMAL, "notification_clear");
+                id(papermono_activity_hub).on_plugged_dashboard_refresh_obviated();
               }
               return;
             }
@@ -51,10 +55,16 @@ sensor:
     id: ha_indoor_temperature
     entity_id: ${ha_indoor_temperature_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_indoor_humidity
     entity_id: ${ha_indoor_humidity_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
 
   # These are documented standard weather attributes in Home Assistant. They
   # are independently optional: a missing attribute simply has no state.
@@ -63,11 +73,17 @@ sensor:
     entity_id: ${ha_weather_entity}
     attribute: temperature
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_weather_humidity
     entity_id: ${ha_weather_entity}
     attribute: humidity
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_weather_pressure
     entity_id: ${ha_weather_entity}
@@ -78,52 +94,88 @@ sensor:
     entity_id: ${ha_weather_entity}
     attribute: wind_speed
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
 
   - platform: homeassistant
     id: ha_outdoor_pm25
     entity_id: ${ha_outdoor_pm25_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_indoor_co2
     entity_id: ${ha_indoor_co2_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_indoor_pm25
     entity_id: ${ha_indoor_pm25_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_indoor_voc
     entity_id: ${ha_indoor_voc_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
 
   - platform: homeassistant
     id: ha_solar_power
     entity_id: ${ha_solar_power_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_house_power
     entity_id: ${ha_house_power_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_grid_import
     entity_id: ${ha_grid_import_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_grid_export
     entity_id: ${ha_grid_export_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_battery_charge
     entity_id: ${ha_battery_charge_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_battery_discharge
     entity_id: ${ha_battery_discharge_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
   - platform: homeassistant
     id: ha_battery_soc
     entity_id: ${ha_battery_soc_entity}
     internal: true
+    on_value:
+      then:
+        - script.execute: mark_dashboard_dirty
 
 globals:
   - id: ha_ever_connected
@@ -192,6 +244,10 @@ globals:
     restore_value: no
     initial_value: '0'
 script:
+  - id: mark_dashboard_dirty
+    mode: queued
+    then:
+      - lambda: 'id(papermono_activity_hub).mark_dashboard_dirty();'
   - id: notification_dismiss
     mode: restart
     then:
@@ -209,6 +265,7 @@ script:
           id(epaper_display).request_refresh(
               papermono_epaper::RefreshPolicy::USER_INTERACTION,
               papermono_epaper::RefreshKind::NORMAL, "notification_dismiss");
+          id(papermono_activity_hub).on_plugged_dashboard_refresh_obviated();
       - if:
           condition:
             api.connected:

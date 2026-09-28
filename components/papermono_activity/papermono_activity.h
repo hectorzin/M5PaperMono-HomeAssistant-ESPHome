@@ -154,6 +154,9 @@ class PaperMonoActivityComponent : public Component {
   void set_sleep_visual_active(globals::GlobalsComponent<bool> *value) {
     this->sleep_visual_active_ = value;
   }
+  void set_notification_active(globals::GlobalsComponent<bool> *value) {
+    this->notification_active_ = value;
+  }
   void set_quiet_hours_user_override(globals::GlobalsComponent<bool> *value) {
     this->quiet_hours_user_override_ = value;
   }
@@ -210,6 +213,8 @@ class PaperMonoActivityComponent : public Component {
   // Clock-aligned timer handling for quiet-hours and periodic light-sleep wakes.
   void on_screensaver_tick();
   void on_external_power_changed(bool connected);
+  void mark_dashboard_dirty();
+  void on_plugged_dashboard_refresh_obviated();
 
   void request_sleep_now(const std::string &wake_at);
   void request_shutdown_until(const std::string &wake_at);
@@ -231,6 +236,10 @@ class PaperMonoActivityComponent : public Component {
   void cancel_periodic_wake_recovery_();
   void clear_wake_recovery_flag_();
   void run_screensaver_periodic_tick_(bool quiet_hours_idle);
+  void process_plugged_realtime_dashboard_();
+  void reset_plugged_dashboard_dirty_state_();
+  bool can_execute_plugged_dashboard_refresh_() const;
+  void execute_plugged_dashboard_refresh_();
   void request_sleep_(PowerTransitionSource source, bool force_quiet_hours = false);
   SleepMode determine_sleep_mode_() const;
   void set_sleep_visual_(bool active);
@@ -324,6 +333,7 @@ class PaperMonoActivityComponent : public Component {
   script::Script<> *status_led_release_color_preview_{nullptr};
   script::Script<> *status_led_update_{nullptr};
   globals::GlobalsComponent<bool> *sleep_visual_active_{nullptr};
+  globals::GlobalsComponent<bool> *notification_active_{nullptr};
   globals::GlobalsComponent<bool> *quiet_hours_user_override_{nullptr};
   globals::GlobalsComponent<float> *battery_display_level_{nullptr};
   binary_sensor::BinarySensor *external_power_{nullptr};
@@ -379,6 +389,11 @@ class PaperMonoActivityComponent : public Component {
   uint32_t manual_shutdown_wake_seconds_{0};
   uint32_t last_motion_log_ms_{0};
   bool ha_controls_ready_logged_{false};
+  bool plugged_dashboard_dirty_{false};
+  uint32_t plugged_dashboard_debounce_due_ms_{0};
+  uint32_t plugged_dashboard_last_refresh_ms_{0};
+  int plugged_dashboard_last_minute_tick_{-1};
+  int plugged_dashboard_last_displayed_minute_{-1};
 };
 
 }  // namespace esphome::papermono_activity

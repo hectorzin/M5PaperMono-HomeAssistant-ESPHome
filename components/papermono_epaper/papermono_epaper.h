@@ -157,7 +157,7 @@ class PaperMonoEpaper
   bool enforce_pmic_mandatory_full_gate_(const char *stage);
   void log_physical_refresh_commit_(const char *stage) const;
   static const char *policy_label_(RefreshPolicy policy);
-  static uint8_t policy_threshold_(RefreshPolicy policy);
+  uint8_t policy_threshold_(RefreshPolicy policy) const;
   static RefreshPolicy merge_pending_policy_(RefreshPolicy existing, RefreshPolicy incoming);
   static RefreshKind merge_pending_kind_(RefreshKind existing, RefreshKind incoming);
   bool resolve_refresh_full_(RefreshKind kind, RefreshPolicy policy) const;

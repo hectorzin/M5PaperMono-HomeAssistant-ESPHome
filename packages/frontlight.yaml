@@ -38,6 +38,7 @@ papermono_activity:
   status_led_release_color_preview: status_led_release_color_preview
   status_led_update: status_led_update
   sleep_visual_active: sleep_visual_active
+  notification_active: notification_active
   quiet_hours_user_override: quiet_hours_user_override
   battery_display_level: paper_mono_battery_display_level
   frontlight_default_brightness: frontlight_default_brightness

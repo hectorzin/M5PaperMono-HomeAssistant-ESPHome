@@ -40,6 +40,8 @@ static constexpr gpio_num_t TOUCH_WAKE_GPIO = GPIO_NUM_4;
 static constexpr uint8_t PICKUP_FULL_THRESHOLD = 8;
 static constexpr uint8_t CONTROLS_ENTER_FULL_THRESHOLD = 8;
 static constexpr uint8_t CONTROLS_EXIT_FULL_THRESHOLD = 10;
+static constexpr uint32_t PLUGGED_DASHBOARD_DEBOUNCE_MS = 1500;
+static constexpr uint32_t PLUGGED_DASHBOARD_MIN_INTERVAL_MS = 15000;
 static constexpr uint32_t HA_STATE_SETTLE_MS = 1750;
 static constexpr uint32_t PMIC_HA_DATA_POLL_INTERVAL_MS = 225;
 static constexpr uint32_t PMIC_HA_DATA_TIMEOUT_MS = 5000;
@@ -208,6 +210,8 @@ void PaperMonoActivityComponent::loop() {
     ESP_LOGI("control", "Home Assistant ready, opening Controls");
     this->enter_controls();
   }
+
+  this->process_plugged_realtime_dashboard_();
 
   // Sleep timeout is evaluated before any periodic/internal work. Once the
   // request is made, the pending flag prevents normal work from re-arming it.
@@ -449,7 +453,9 @@ void PaperMonoActivityComponent::exit_controls_(bool preserve_sleep_pending) {
     this->display_->request_refresh(papermono_epaper::RefreshPolicy::USER_INTERACTION,
                                     papermono_epaper::RefreshKind::NORMAL, "exit_controls");
   }
-
+  if (this->external_power_present_()) {
+    this->reset_plugged_dashboard_dirty_state_();
+  }
 }
 
 uint32_t PaperMonoActivityComponent::current_time_bucket_() const {
@@ -864,14 +870,128 @@ void PaperMonoActivityComponent::on_external_power_changed(bool connected) {
       wifi::global_wifi_component->enable();
     }
 #endif
+    this->plugged_dashboard_last_minute_tick_ = -1;
+    this->mark_dashboard_dirty();
     return;
   }
 
   ESP_LOGI(TAG, "External power disconnected");
+  this->reset_plugged_dashboard_dirty_state_();
+  this->plugged_dashboard_last_minute_tick_ = -1;
   const uint32_t now = millis();
   this->last_activity_ms_ = now;
   this->sleep_eligible_activity_ms_ = now;
   this->sleep_timeout_logged_ = false;
+}
+
+void PaperMonoActivityComponent::mark_dashboard_dirty() {
+  if (!this->external_power_present_()) {
+    return;
+  }
+  this->plugged_dashboard_dirty_ = true;
+  if (this->plugged_dashboard_debounce_due_ms_ == 0) {
+    this->plugged_dashboard_debounce_due_ms_ = millis() + PLUGGED_DASHBOARD_DEBOUNCE_MS;
+  }
+}
+
+void PaperMonoActivityComponent::on_plugged_dashboard_refresh_obviated() {
+  if (!this->external_power_present_()) {
+    return;
+  }
+  this->reset_plugged_dashboard_dirty_state_();
+}
+
+void PaperMonoActivityComponent::reset_plugged_dashboard_dirty_state_() {
+  this->plugged_dashboard_dirty_ = false;
+  this->plugged_dashboard_debounce_due_ms_ = 0;
+}
+
+bool PaperMonoActivityComponent::can_execute_plugged_dashboard_refresh_() const {
+  if (this->in_controls_view_()) {
+    return false;
+  }
+  if (this->sleep_visual_active_value_()) {
+    return false;
+  }
+  if (this->notification_active_ != nullptr && this->notification_active_->value()) {
+    return false;
+  }
+  if (this->ha_connection_state_ != nullptr && this->ha_connection_state_->value() == 0) {
+    return false;
+  }
+  if (this->display_ == nullptr) {
+    return false;
+  }
+  if (this->display_->is_pmic_recovery_failed()) {
+    return false;
+  }
+  if (!this->display_->is_hw_ready_for_refresh()) {
+    return false;
+  }
+  if (this->display_->is_pmic_recovery_pending()) {
+    return false;
+  }
+  if (this->display_->is_pmic_mandatory_full_pending()) {
+    return false;
+  }
+  if (this->pmu_ != nullptr && this->pmu_->is_frontlight_recovery_failed()) {
+    return false;
+  }
+  return true;
+}
+
+void PaperMonoActivityComponent::execute_plugged_dashboard_refresh_() {
+  if (this->display_ == nullptr || !this->can_execute_plugged_dashboard_refresh_()) {
+    return;
+  }
+  this->display_->request_refresh(papermono_epaper::RefreshPolicy::AUTOMATIC, papermono_epaper::RefreshKind::NORMAL,
+                                  "dashboard_plugged");
+  this->reset_plugged_dashboard_dirty_state_();
+  this->plugged_dashboard_last_refresh_ms_ = millis();
+  if (this->time_ != nullptr) {
+    const ESPTime now = this->time_->now();
+    if (now.is_valid()) {
+      this->plugged_dashboard_last_displayed_minute_ = now.hour * 60 + now.minute;
+    }
+  }
+  ESP_LOGI(TAG, "Plugged dashboard refresh requested (displayed_minute=%d)", this->plugged_dashboard_last_displayed_minute_);
+}
+
+void PaperMonoActivityComponent::process_plugged_realtime_dashboard_() {
+  if (!this->external_power_present_()) {
+    return;
+  }
+
+  if (this->time_ != nullptr) {
+    const ESPTime now = this->time_->now();
+    if (now.is_valid()) {
+      const int minute_key = now.hour * 60 + now.minute;
+      if (minute_key != this->plugged_dashboard_last_minute_tick_) {
+        this->plugged_dashboard_last_minute_tick_ = minute_key;
+        this->mark_dashboard_dirty();
+      }
+    }
+  }
+
+  if (!this->plugged_dashboard_dirty_) {
+    return;
+  }
+
+  const uint32_t now_ms = millis();
+  if (this->plugged_dashboard_debounce_due_ms_ != 0 && now_ms < this->plugged_dashboard_debounce_due_ms_) {
+    return;
+  }
+
+  if (!this->can_execute_plugged_dashboard_refresh_()) {
+    return;
+  }
+
+  if (this->plugged_dashboard_last_refresh_ms_ != 0 &&
+      now_ms - this->plugged_dashboard_last_refresh_ms_ < PLUGGED_DASHBOARD_MIN_INTERVAL_MS) {
+    return;
+  }
+
+  this->execute_plugged_dashboard_refresh_();
 }
 
 void PaperMonoActivityComponent::apply_status_led_sleep_pending_(bool pending) {
@@ -1246,6 +1366,9 @@ void PaperMonoActivityComponent::run_screensaver_periodic_tick_(bool quiet_hours
 }
 
 void PaperMonoActivityComponent::on_screensaver_tick() {
+  if (this->external_power_present_()) {
+    return;
+  }
   if (this->time_ != nullptr) {
     const ESPTime now = this->time_->now();
     const uint8_t interval = this->screensaver_refresh_minutes_();

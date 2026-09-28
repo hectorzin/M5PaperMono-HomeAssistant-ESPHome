@@ -24,6 +24,7 @@ namespace esphome::papermono_epaper {
 static const char *const TAG = "papermono_epaper";
 
 static constexpr uint8_t AUTO_FULL_THRESHOLD = 10;
+static constexpr uint8_t PLUGGED_AUTO_FULL_THRESHOLD = 60;
 static constexpr uint8_t USER_FULL_THRESHOLD = 15;
 
 // SSD1677 commands used by the PaperMono OTP demo.
@@ -366,8 +367,14 @@ const char *PaperMonoEpaper::policy_label_(RefreshPolicy policy) {
   return policy == RefreshPolicy::USER_INTERACTION ? "USER" : "AUTOMATIC";
 }
 
-uint8_t PaperMonoEpaper::policy_threshold_(RefreshPolicy policy) {
-  return policy == RefreshPolicy::USER_INTERACTION ? USER_FULL_THRESHOLD : AUTO_FULL_THRESHOLD;
+uint8_t PaperMonoEpaper::policy_threshold_(RefreshPolicy policy) const {
+  if (policy == RefreshPolicy::USER_INTERACTION) {
+    return USER_FULL_THRESHOLD;
+  }
+  if (this->pmu_ != nullptr && this->pmu_->is_external_power_present()) {
+    return PLUGGED_AUTO_FULL_THRESHOLD;
+  }
+  return AUTO_FULL_THRESHOLD;
 }
 
 RefreshPolicy PaperMonoEpaper::merge_pending_policy_(RefreshPolicy existing, RefreshPolicy incoming) {

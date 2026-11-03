@@ -6,6 +6,10 @@
  */
 #include "m5pm1.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+
 #include "driver/gpio.h"
 #include "esp_sleep.h"
 #include "esphome/core/gpio.h"
@@ -715,15 +719,27 @@ optional<uint8_t> M5PM1Component::read_pwr_src_() {
 }
 
 int M5PM1Component::battery_level_from_mv_(uint16_t mv) const {
-  const int level = static_cast<int>((static_cast<int>(mv) - static_cast<int>(BATTERY_LEVEL_EMPTY_MV)) * 100 /
-                                     static_cast<float>(BATTERY_LEVEL_SPAN_MV));
-  if (level < 0) {
-    return 0;
+  // Experimental remaining-runtime curve derived from the 2026-10-26 to
+  // 2026-11-03 discharge cycle. Legacy percentages use 8 mV per percentage
+  // point from 3300 mV; interpolate the observed remapping in that domain.
+  static constexpr uint8_t OLD_SOC[] = {0, 10, 20, 30, 40, 45, 48, 50, 55, 60, 70, 80, 90, 95, 100};
+  static constexpr uint8_t NEW_SOC[] = {0, 0, 1, 2, 3, 10, 14, 16, 27, 47, 65, 78, 89, 94, 100};
+
+  const float old_percent = (static_cast<int>(mv) - static_cast<int>(BATTERY_LEVEL_EMPTY_MV)) * 100.0f /
+                            static_cast<float>(BATTERY_LEVEL_SPAN_MV);
+  if (old_percent <= OLD_SOC[0]) {
+    return NEW_SOC[0];
   }
-  if (level >= 100) {
-    return 100;
+  constexpr size_t POINT_COUNT = sizeof(OLD_SOC) / sizeof(OLD_SOC[0]);
+  for (size_t i = 1; i < POINT_COUNT; i++) {
+    if (old_percent <= OLD_SOC[i]) {
+      const float fraction = (old_percent - OLD_SOC[i - 1]) / (OLD_SOC[i] - OLD_SOC[i - 1]);
+      const float interpolated = NEW_SOC[i - 1] + fraction * (NEW_SOC[i] - NEW_SOC[i - 1]);
+      const int rounded = static_cast<int>(floorf(interpolated + 0.5f));
+      return std::max(0, std::min(100, rounded));
+    }
   }
-  return level;
+  return NEW_SOC[POINT_COUNT - 1];
 }
 
 void M5PM1Component::refresh_power_and_battery() {

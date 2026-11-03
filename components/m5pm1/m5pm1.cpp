@@ -108,10 +108,6 @@ static constexpr uint8_t M5PM1_BTN_CFG1_SINGLE_RST_DIS = 0x01;
 static constexpr uint8_t M5PM1_PWR_SRC_5VIN = 0x01;
 static constexpr uint8_t M5PM1_PWR_SRC_5VINOUT = 0x02;
 
-// Official M5Unified voltage-to-percent mapping for M5PM1 boards (no fuel gauge SOC).
-static constexpr uint16_t BATTERY_LEVEL_EMPTY_MV = 3300;
-static constexpr uint16_t BATTERY_LEVEL_SPAN_MV = 800;  // 4150 - 3350
-
 void M5PM1Component::dump_config() {
   LOG_I2C_DEVICE(this);
   LOG_PIN("  IRQ Pin: ", this->irq_pin_);
@@ -719,27 +715,24 @@ optional<uint8_t> M5PM1Component::read_pwr_src_() {
 }
 
 int M5PM1Component::battery_level_from_mv_(uint16_t mv) const {
-  // Experimental remaining-runtime curve derived from the 2026-10-26 to
-  // 2026-11-03 discharge cycle. Legacy percentages use 8 mV per percentage
-  // point from 3300 mV; interpolate the observed remapping in that domain.
-  static constexpr uint8_t OLD_SOC[] = {0, 10, 20, 30, 40, 45, 48, 50, 55, 60, 70, 80, 90, 95, 100};
-  static constexpr uint8_t NEW_SOC[] = {0, 0, 1, 2, 3, 10, 14, 16, 27, 47, 65, 78, 89, 94, 100};
+  static constexpr uint16_t VOLTAGE_MV[] = {3124, 3300, 3500, 3600, 3680, 3700, 3720, 3740, 3760,
+                                            3780, 3800, 3820, 3860, 3900, 3940, 4000, 4020, 4048};
+  static constexpr uint8_t SOC[] = {0, 1, 3, 4, 5, 7, 15, 19, 24, 30, 40, 54, 67, 73, 80, 92, 95, 100};
 
-  const float old_percent = (static_cast<int>(mv) - static_cast<int>(BATTERY_LEVEL_EMPTY_MV)) * 100.0f /
-                            static_cast<float>(BATTERY_LEVEL_SPAN_MV);
-  if (old_percent <= OLD_SOC[0]) {
-    return NEW_SOC[0];
+  if (mv <= VOLTAGE_MV[0]) {
+    return SOC[0];
   }
-  constexpr size_t POINT_COUNT = sizeof(OLD_SOC) / sizeof(OLD_SOC[0]);
+  constexpr size_t POINT_COUNT = sizeof(VOLTAGE_MV) / sizeof(VOLTAGE_MV[0]);
   for (size_t i = 1; i < POINT_COUNT; i++) {
-    if (old_percent <= OLD_SOC[i]) {
-      const float fraction = (old_percent - OLD_SOC[i - 1]) / (OLD_SOC[i] - OLD_SOC[i - 1]);
-      const float interpolated = NEW_SOC[i - 1] + fraction * (NEW_SOC[i] - NEW_SOC[i - 1]);
+    if (mv <= VOLTAGE_MV[i]) {
+      const float fraction = static_cast<float>(mv - VOLTAGE_MV[i - 1]) /
+                             static_cast<float>(VOLTAGE_MV[i] - VOLTAGE_MV[i - 1]);
+      const float interpolated = SOC[i - 1] + fraction * (SOC[i] - SOC[i - 1]);
       const int rounded = static_cast<int>(floorf(interpolated + 0.5f));
       return std::max(0, std::min(100, rounded));
     }
   }
-  return NEW_SOC[POINT_COUNT - 1];
+  return SOC[POINT_COUNT - 1];
 }
 
 void M5PM1Component::refresh_power_and_battery() {

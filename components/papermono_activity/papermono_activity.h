@@ -202,6 +202,8 @@ class PaperMonoActivityComponent : public Component {
   // True when Wi-Fi and the native API (with state subscription) are ready and
   // ha_connection_state is REAL (not CONNECTING or DEMO).
   bool is_ha_controls_ready() const;
+  // Network/API transport readiness without the logical HA state gate.
+  bool is_network_api_ready() const { return this->is_network_api_ready_(); }
 
   void enter_controls(int requested_page = -1);
   void request_controls_entry(int requested_page);

@@ -31,6 +31,29 @@ binary_sensor:
         - lambda: |-
             id(status_led_force_physical_apply) = true;
             id(papermono_activity_hub).on_external_power_changed(x);
+            if (id(paper_mono_battery_level).has_state() &&
+                !std::isnan(id(paper_mono_battery_level).state) &&
+                id(paper_mono_battery_level).state >= 0.0f &&
+                id(paper_mono_battery_level).state <= 100.0f) {
+              const float level = floorf(id(paper_mono_battery_level).state + 0.5f);
+              if (!x) {
+                // Start the discharge window from the latest reading, without
+                // averaging in stale charging samples or applying the discharge cap.
+                id(paper_mono_battery_sample_0) = level;
+                id(paper_mono_battery_sample_1) = level;
+                id(paper_mono_battery_sample_2) = level;
+                id(paper_mono_battery_sample_sum) = level * 3.0f;
+                id(paper_mono_battery_sample_count) = 3;
+                id(paper_mono_battery_sample_index) = 0;
+                id(paper_mono_battery_display_level) = level;
+              } else {
+                // A fresh charging session must not inherit the discharge
+                // moving average, and charging readings may raise the display.
+                id(paper_mono_battery_sample_count) = 0;
+                id(paper_mono_battery_sample_sum) = 0.0f;
+                id(paper_mono_battery_sample_index) = 0;
+              }
+            }
         - script.execute: paper_mono_battery_update_display
 
 script:
@@ -74,8 +97,10 @@ script:
             if (!external_power && !std::isnan(id(paper_mono_battery_display_level)) &&
                 rounded > id(paper_mono_battery_display_level))
               rounded = id(paper_mono_battery_display_level);
+            const bool changed = std::isnan(id(paper_mono_battery_display_level)) ||
+                                 rounded != id(paper_mono_battery_display_level);
             id(paper_mono_battery_display_level) = rounded;
-            if (external_power)
+            if (changed)
               id(papermono_activity_hub).mark_dashboard_dirty();
           }
       - script.execute: status_led_update

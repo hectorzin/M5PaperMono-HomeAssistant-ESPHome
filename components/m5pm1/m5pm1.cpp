@@ -742,9 +742,30 @@ void M5PM1Component::refresh_power_and_battery() {
     this->last_external_power_ = external_power;
     ESP_LOGI(TAG, "PWR_SRC=0x%02X, external_power=%s", *pwr_src, YESNO(external_power));
 
-    if (this->external_power_binary_sensor_ != nullptr) {
-      this->external_power_binary_sensor_->publish_state(external_power);
+    // Callbacks run synchronously. On insertion, publish power first so the
+    // new sample can raise the display. On removal, publish VBAT first; the
+    // following power callback resynchronizes the discharge baseline to it.
+    if (external_power && this->external_power_binary_sensor_ != nullptr) {
+      this->external_power_binary_sensor_->publish_state(true);
     }
+    const auto vbat_mv = this->read_vbat_mv_();
+    if (vbat_mv.has_value()) {
+      const float volts = *vbat_mv / 1000.0f;
+      const int level = this->battery_level_from_mv_(*vbat_mv);
+      this->last_battery_level_ = static_cast<uint8_t>(level);
+      ESP_LOGI(TAG, "VBAT=%u mV (%.3f V), level=%d%%", *vbat_mv, volts, level);
+      if (this->battery_voltage_sensor_ != nullptr) {
+        this->battery_voltage_sensor_->publish_state(volts);
+      }
+      if (this->battery_level_sensor_ != nullptr) {
+        this->battery_level_sensor_->publish_state(level);
+      }
+    }
+
+    if (!external_power && this->external_power_binary_sensor_ != nullptr) {
+      this->external_power_binary_sensor_->publish_state(false);
+    }
+    return;
   }
 
   const auto vbat_mv = this->read_vbat_mv_();

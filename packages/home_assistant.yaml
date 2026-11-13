@@ -1037,6 +1037,7 @@ script:
                               - script.execute:
                                   id: control_climate_temperature_up
                                   slot: !lambda 'return slot;'
+                            else:
                               - if:
                                   condition:
                                     lambda: 'return std::string(id(controls_id).type_at(slot)) == "cover";'
